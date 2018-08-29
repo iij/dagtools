@@ -19,8 +19,6 @@ IIJGIO ストレージ＆アナリシスサービス ストレージ専用コマ
     - 64 bit: `dagtools-windows-amd64-1.6.0.zip <https://storage-dag.iijgio.com/support/tools/dagtools/dagtools-windows-amd64-1.6.0.zip>`_
     - 32 bit: `dagtools-windows-386-1.6.0.zip <https://storage-dag.iijgio.com/support/tools/dagtools/dagtools-windows-386-1.6.0.zip>`_
 
-上記以外のパッケージを希望される場合は dag-support@iij.ad.jp までご連絡ください。
-
 .. warning::
 
    - **CentOS 5.6 x86-64 (kernel-2.6.18-238)** の環境では Linux 64 bit版のパッケージは動作しないため、Linux 32 bit版のパッケージをご利用ください。
