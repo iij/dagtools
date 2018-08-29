@@ -1,0 +1,34 @@
+%define name dagtools
+%define debug_package %{nil}
+
+Name: %{name}
+Summary: dagrin command line tool
+Version: __VERSION__
+Release: __RELEASE__%{?dist}
+License: Proprietary
+URL: https://github.com/iij/dagtools
+BuildRequires: golang, git
+Source: __PACKAGE_NAME__.tar.gz
+
+%description
+dagtools
+
+%prep
+
+%setup -q -n __PACKAGE_NAME__
+
+%build
+
+%install
+mkdir -p %{buildroot}/usr/bin
+install -m 755 %{name} %{buildroot}%{_bindir}/%{name}
+mkdir -p %{buildroot}/%{_sysconfdir}
+install -m 600 %{name}.ini %{buildroot}%{_sysconfdir}/%{name}.ini
+
+%clean
+rm -rf %{buildroot}
+
+%files
+%defattr(-,root,root)
+%{_bindir}/%{name}
+%config(noreplace) %{_sysconfdir}/%{name}.ini

@@ -1,0 +1,7 @@
+*.test
+env/version.go
+*.log
+build/
+.idea/
+vendor/
+tmp/

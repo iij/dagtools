@@ -1,0 +1,22 @@
+[dagtools]
+# proxy = http://proxy.example.com:8080
+proxy =
+debug = false
+verbose = true
+concurrency = 1
+tempDir = /var/tmp
+
+[logging]
+type = file
+file = dagtools.log
+
+[storage]
+endpoint = storage-dag.iijgio.com
+accessKeyId =
+secretAccessKey =
+secure = true
+insecureSkipVerify = false
+multipartChunkSize = 1073741824 # 1GB
+retry = 2 # number of retries
+retryInterval = 3000 # 3.0 seconds
+abortOnFailure = true

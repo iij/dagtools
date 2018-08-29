@@ -1,0 +1,5 @@
+package env
+
+func init() {
+	Version = "__VERSION__"
+}
