@@ -109,12 +109,12 @@ func (c *lsCommand) listBuckets() (err error) {
 
 func (c *lsCommand) printBuckets(listing *client.BucketListing) {
 	owner := listing.Owner.String()
-	fmt.Fprintf(os.Stdout, "%20s  %20s   %s\n", "owner", "created", "name")
+	fmt.Fprintf(os.Stdout, "%20s  %20s   %s  %s\n", "owner", "created", "name", "region")
 	if len(owner) > 20 {
 		owner = owner[0:20]
 	}
 	for _, b := range listing.Buckets {
-		fmt.Fprintf(os.Stdout, "%20s  %20s   %s\n", owner, LocalTimeString(b.CreationDate), b.Name)
+		fmt.Fprintf(os.Stdout, "%20s  %20s   %s  %s\n", owner, LocalTimeString(b.CreationDate), b.Name, b.Region)
 	}
 }
 

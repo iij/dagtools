@@ -30,6 +30,7 @@ func (e ErrorResponse) Error() string {
 type Bucket struct {
 	Name         string    `xml:"Name"`
 	CreationDate time.Time `xml:"CreationDate"`
+	Region		string		`xml:"LocationConstraint"`
 }
 
 func (b Bucket) String() string {

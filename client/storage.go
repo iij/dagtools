@@ -11,6 +11,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/iij/dagtools/client"
 	"io"
 	"io/ioutil"
 	"log"
@@ -72,6 +73,7 @@ type StorageClient interface {
 
 	// Bucket API methods
 	ListBuckets() (*BucketListing, error)
+	GetBucketLocation() (*BucketListing, error)
 	PutBucket(bucket string) error
 	DeleteBucket(bucket string) error
 	DoesBucketExist(bucket string) (bool, error)
@@ -145,7 +147,7 @@ func NewStorageClient(env *env.Environment) (StorageClient, error) {
 		s = env.Config.Section("storage")
 	}
 	var (
-		endpoint        = s.Get("endpoint", "storage-dag.iijgio.com")
+			endpoint        = s.Get("endpoint", "storage-dag.iijgio.com")
 		accessKeyID     = s.Get("accessKeyId", "")
 		secretAccessKey = s.Get("secretAccessKey", "")
 		secure          = s.GetBool("secure", true)
@@ -237,8 +239,39 @@ func (cli *DefaultStorageClient) ListBuckets() (listing *BucketListing, err erro
 		}
 		return req, nil
 	}, &listing)
+	for _, b := range listing.Buckets {
+		b.Region, err = cli.GetBucketLocation(b.Name)
+		if err != nil {
+			cli.Logger.Println("Failed to get bucket location.", err)
+			return nil, err
+		}
+	}
+	if err != nil {
+		cli.Logger.Println("Failed to get bucket location.", err)
+		return
+	}
 	if err != nil {
 		cli.Logger.Println("Failed to execute HTTP request.", err)
+		return
+	}
+	defer resp.Body.Close()
+	return
+}
+
+//Execute Get Bucket Location and return bucket location
+func (cli *DefaultStorageClient) GetBucketLocation(bucket string) (bucketLocation string, err error) {
+	//Handle log message and errors
+	target := cli.Config.buildURL(bucket, "", nil)
+	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
+		req, err := http.NewRequest("GET", target, nil)
+		if err != nil {
+			cli.Logger.Printf("Failed to get a bucket locations. reason: %v\n", err)
+			return nil, err
+		}
+		return req, nil
+	}, bucketLocation)
+	if err != nil {
+		cli.Logger.Printf("Failed to execute HTTP request.", err)
 		return
 	}
 	defer resp.Body.Close()
