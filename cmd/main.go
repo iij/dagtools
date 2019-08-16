@@ -140,15 +140,15 @@ func (ep *commandExt) All() map[string]Command {
 	return all
 }
 
-// Run dagtools
-func Run(e *env.Environment, cmdName string, cmdArgs []string) int {
-	e.Version = env.Version
-	cmds := Commands.All()
-	if cmds[cmdName] == nil {
+	// Run dagtools
+	func Run(e *env.Environment, cmdName string, cmdArgs []string) int {
+		e.Version = env.Version
+		cmds := Commands.All()
+		if cmds[cmdName] == nil {
 		fmt.Fprintf(os.Stderr, "[Error] command not found: %q \n", cmdName)
 		return 1
 	}
-	_cmd, _ := Commands.Lookup(cmdName)
+		_cmd, _ := Commands.Lookup(cmdName)
 	_cmd.Init(e)
 	e.Logger.Printf("Starting %q command ..., args: %s", cmdName, cmdArgs)
 	err := _cmd.Run(cmdArgs)

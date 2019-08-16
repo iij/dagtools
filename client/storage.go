@@ -11,7 +11,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/iij/dagtools/client"
 	"io"
 	"io/ioutil"
 	"log"
@@ -73,7 +72,6 @@ type StorageClient interface {
 
 	// Bucket API methods
 	ListBuckets() (*BucketListing, error)
-	GetBucketLocation() (*BucketListing, error)
 	PutBucket(bucket string) error
 	DeleteBucket(bucket string) error
 	DoesBucketExist(bucket string) (bool, error)
@@ -147,7 +145,7 @@ func NewStorageClient(env *env.Environment) (StorageClient, error) {
 		s = env.Config.Section("storage")
 	}
 	var (
-			endpoint        = s.Get("endpoint", "storage-dag.iijgio.com")
+		endpoint        = s.Get("endpoint", "storage-dag.iijgio.com")
 		accessKeyID     = s.Get("accessKeyId", "")
 		secretAccessKey = s.Get("secretAccessKey", "")
 		secure          = s.GetBool("secure", true)
@@ -269,12 +267,14 @@ func (cli *DefaultStorageClient) GetBucketLocation(bucket string) (bucketLocatio
 			return nil, err
 		}
 		return req, nil
-	}, bucketLocation)
+	}, nil)
 	if err != nil {
-		cli.Logger.Printf("Failed to execute HTTP request.", err)
+		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
 	}
 	defer resp.Body.Close()
+	bucketLocation = resp.Header.Get("LocationConstraint")
+	fmt.Println(bucketLocation)
 	return
 }
 
