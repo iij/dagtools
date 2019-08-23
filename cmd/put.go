@@ -20,6 +20,7 @@ type putCommand struct {
 	opts      *flag.FlagSet
 	recursive bool
 	uploadId  string
+	putRegion string
 }
 
 func (c *putCommand) Description() string {
@@ -33,6 +34,7 @@ func (c *putCommand) Usage() string {
   put <file1> [<file2>...] <bucket>:<prefix>/
   put -r <dir> <bucket>:<prefix>[/]
   put -upload-id=<upload-id> <file> <bucket>[:<key>]
+  put -region=<region(ap1 or ap2)> <file> <bucket>[:<key>]
   put <bucket>:<key> < <file>
 
 Options:
@@ -45,6 +47,7 @@ func (c *putCommand) Init(env *env.Environment) (err error) {
 	opts := flag.NewFlagSet("put", flag.ExitOnError)
 	opts.BoolVar(&c.recursive, "r", false, "recursively upload")
 	opts.StringVar(&c.uploadId, "upload-id", "", "identifier of multipart upload")
+	opts.StringVar(&c.putRegion, "region", "", "identifier of region to put")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}
@@ -87,7 +90,12 @@ func (c *putCommand) Run(args []string) (err error) {
 	}
 	// PUT Bucket
 	if len(argv) < 2 && key == "" {
-		err = c.cli.PutBucket(bucket)
+		if c.putRegion != "" {
+			fmt.Println(c.putRegion) //debugPrint
+			err = c.cli.SelectRegionPutBucket(bucket, c.putRegion)
+		} else {
+			err = c.cli.PutBucket(bucket)
+		}
 		return err
 	}
 	// PUT Object(s)

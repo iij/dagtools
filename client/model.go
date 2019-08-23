@@ -30,7 +30,7 @@ func (e ErrorResponse) Error() string {
 type Bucket struct {
 	Name         string    `xml:"Name"`
 	CreationDate time.Time `xml:"CreationDate"`
-	Region		string		`xml:"LocationConstraint"`
+	Location string `xml:"Location Constraint"`
 }
 
 func (b Bucket) String() string {
@@ -67,9 +67,25 @@ type BucketListing struct {
 	Buckets []Bucket `xml:"Buckets>Bucket"`
 }
 
+type Region struct {
+	Name string `xml:"Region"`
+	Alias string `xml:"Alias"`
+	Endpoint string `xml:"Endpoint"`
+}
+
+type Regions struct {
+	Regions []Region `xml:"RegionInfo"`
+}
+
+type PutBucketRequest struct {
+	XMLName xml.Name `xml:"CreateBucketConfiguration"`
+	Location string  `xml:"LocationConstraint"`
+}
+
 // ObjectListing returns list of ObjectSummary
 type ObjectListing struct {
-	Name           string          `xml:"Name"`
+	Name           string
+	Location	   string		   `xml:"LocationConstraint"`
 	Prefix         string          `xml:"Prefix"`
 	Marker         string          `xml:"Marker"`
 	MaxKeys        int             `xml:"MaxKeys"`
