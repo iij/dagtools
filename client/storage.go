@@ -281,6 +281,8 @@ func (cli *DefaultStorageClient) GetRegions() (regions *Regions, err error){
 		cli.Logger.Println("Storage REST API Call: GET Regions")
 	}
 	target := cli.Config.buildURL("", "", map[string]string{"regions": ""})
+	accesskey := cli.Config.AccessKeyID
+	cli.Config.AccessKeyID = ""
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("GET", target, nil)
 		if err != nil {
@@ -290,6 +292,7 @@ func (cli *DefaultStorageClient) GetRegions() (regions *Regions, err error){
 		return req, nil
 	}, &regions)
 	defer resp.Body.Close()
+	cli.Config.AccessKeyID = accesskey
 	return
 }
 
@@ -298,27 +301,27 @@ func (cli *DefaultStorageClient) SelectRegionPutBucket(bucket string, region str
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: PUT Bucket {bucket: %q}", bucket)
 	}
+	defaultLocation := cli.Config.Endpoint
+	location, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return err
+	}
+	for _, r := range location.Regions {
+		if r.Name == region {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(bucket, "", nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
-		defaultLocation := cli.Config.Endpoint
-		location, err := cli.GetRegions()
-		if err != nil {
-			cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
-			return nil, err
-		}
-		for _, r := range location.Regions {
-			if r.Name == region {
-				cli.Config.Endpoint = r.Endpoint
-			}
-		}
 		req, err := http.NewRequest("PUT", target, nil)
-		cli.Config.Endpoint = defaultLocation
 		if err != nil {
 			cli.Logger.Printf("Failed to create a new HTTP request for ListObjects. reason: %v\n", err)
 			return nil, err
 		}
 		return req, nil
 	}, nil)
+	cli.Config.Endpoint = defaultLocation
 	if err != nil {
 		cli.Logger.Printf("Failed to execute HTTP request. reason: %s", err)
 		return err
@@ -385,6 +388,18 @@ func (cli *DefaultStorageClient) DoesBucketExist(bucket string) (result bool, er
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: HEAD Bucket {bucket: %q}", bucket)
 	}
+	defaultLocation := cli.Config.Endpoint
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return result, err
+	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(bucket, "", nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("HEAD", target, nil)
@@ -394,6 +409,7 @@ func (cli *DefaultStorageClient) DoesBucketExist(bucket string) (result bool, er
 		}
 		return req, nil
 	}, nil)
+	cli.Config.Endpoint = defaultLocation
 	if err != nil && resp == nil {
 		return false, err
 	}
@@ -495,6 +511,24 @@ func (cli *DefaultStorageClient) ListObjects(bucket, prefix, marker, delimiter s
 		cli.env.Logger.Printf("Storage REST API Call: GET Bucket (List Objects) {bucket: %q, prefix: %q, marker: %q, delimiter: %q, maxKeys: %d}",
 			bucket, prefix, marker, delimiter, maxKeys)
 	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get bucket location. reason: %v\n", err)
+	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return nil, err
+	}
+	defaultEndpoint := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
+	if err != nil {
+		cli.Logger.Printf("Failed to execute get bucket location. reason: %v\n", err)
+	}
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := cli.NewListObjectsRequest(bucket, prefix, marker, delimiter, maxKeys)
 		if err != nil {
@@ -507,10 +541,8 @@ func (cli *DefaultStorageClient) ListObjects(bucket, prefix, marker, delimiter s
 		cli.Logger.Printf("Failed to execute HTTP request. reason: %v\n", err)
 		return nil, err
 	}
-	listing.Location, err = cli.GetBucketLocation(bucket)
-	if err != nil {
-		cli.Logger.Printf("Failed to execute get bucket location. reason: %v\n", err)
-	}
+	cli.Config.Endpoint = defaultEndpoint
+	listing.Location = bucketLocation
 	defer resp.Body.Close()
 	return
 }
@@ -587,6 +619,21 @@ func (cli *DefaultStorageClient) GetObject(bucket, key string) (r io.ReadCloser,
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: GET Object {bucket: %q, key: %q}", bucket, key)
 	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return nil, err
+	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
+	}
+	defaultEndpoint := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(bucket, key, nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("GET", target, nil)
@@ -596,6 +643,7 @@ func (cli *DefaultStorageClient) GetObject(bucket, key string) (r io.ReadCloser,
 		}
 		return req, nil
 	}, nil)
+	cli.Config.Endpoint = defaultEndpoint
 	if err != nil {
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
@@ -613,6 +661,18 @@ func (cli *DefaultStorageClient) DoesObjectExist(bucket, key string) (bool, erro
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: HEAD Object {bucket: %q, key: %q}", bucket, key)
 	}
+	defaultLocation := cli.Config.Endpoint
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket Location. reason: %v\n", err)
+		return false, err
+	}
+	locations, err := cli.GetRegions()
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(bucket, key, nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("HEAD", target, nil)
@@ -625,6 +685,7 @@ func (cli *DefaultStorageClient) DoesObjectExist(bucket, key string) (bool, erro
 	if resp == nil && err != nil {
 		return false, err
 	}
+	cli.Config.Endpoint = defaultLocation
 	defer resp.Body.Close()
 	sc := resp.StatusCode
 	if sc == 200 || sc == 404 {
@@ -745,6 +806,7 @@ func (cli *DefaultStorageClient) DeleteMultipleObjects(bucket string, keys []str
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: Delete Multiple Objects {bucket: %q, key: %q, quiet: %v}", bucket, keys, quiet)
 	}
+
 	request := multipleDeletionRequest{Quiet: quiet, Keys: _keys}
 	target := cli.Config.buildURL(bucket, "", map[string]string{"delete": ""})
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {

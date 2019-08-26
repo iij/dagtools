@@ -91,7 +91,6 @@ func (c *putCommand) Run(args []string) (err error) {
 	// PUT Bucket
 	if len(argv) < 2 && key == "" {
 		if c.putRegion != "" {
-			fmt.Println(c.putRegion) //debugPrint
 			err = c.cli.SelectRegionPutBucket(bucket, c.putRegion)
 		} else {
 			err = c.cli.PutBucket(bucket)

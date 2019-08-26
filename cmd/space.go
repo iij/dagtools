@@ -49,10 +49,10 @@ func (c *spaceCommand) Run(args []string) (err error) {
 	fmt.Printf("%13s %13s\n", "total", "account")
 	if c.humanReadable {
 		fmt.Printf("%13s %13s\n",
-			HumanReadableBytes(uint64(usage.AccountUsed)),
-			HumanReadableBytes(uint64(usage.ContractUsed)))
+			HumanReadableBytes(uint64(usage.ContractUsed)),
+			HumanReadableBytes(uint64(usage.AccountUsed)))
 	} else {
-		fmt.Printf("%13v %13v\n", usage.AccountUsed, usage.ContractUsed)
+		fmt.Printf("%13v %13v\n", usage.ContractUsed, usage.AccountUsed)
 	}
 	return
 }

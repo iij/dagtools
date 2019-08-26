@@ -198,7 +198,11 @@ func (c *lsCommand) listObjects(bucket string, prefix string, head bool) (num in
 }
 
 func (c *lsCommand) printObjectsHeader(listing *client.ObjectListing) {
-	fmt.Fprintf(os.Stdout, "[%s(%s):%s]\n", listing.Name, listing.Location, listing.Prefix)
+	if c.location {
+		fmt.Fprintf(os.Stdout, "[%s(%s):%s]\n", listing.Name, listing.Location, listing.Prefix)
+	} else {
+		fmt.Fprintf(os.Stdout, "[%s:%s]\n", listing.Name, listing.Prefix)
+	}
 	fmt.Fprintf(os.Stdout, "%20s  %16s  %20s", "owner", "size", "last-modified")
 	if c.includeETag {
 		fmt.Fprintf(os.Stdout, "  %38s", "etag")
