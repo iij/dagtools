@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -12,6 +13,8 @@ import (
 type existCommand struct {
 	env *env.Environment
 	cli client.StorageClient
+	opts		*flag.FlagSet
+	printRegion bool
 }
 
 func (c *existCommand) Description() string {
@@ -20,49 +23,81 @@ func (c *existCommand) Description() string {
 
 func (c *existCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  exist [<bucket>[:<key>] ...]`)
+  exist [<bucket>[:<key>] ...]
+
+Options:
+%s`, OptionUsage(c.opts))
 }
 
 func (c *existCommand) Init(env *env.Environment) (err error) {
 	c.env = env
 	c.cli, _ = client.NewStorageClient(env)
+	opts := flag.NewFlagSet("exist", flag.ExitOnError)
+	opts.BoolVar(&c.printRegion, "region", false, "print region")
+	opts.Usage = func() {
+		fmt.Fprintln(os.Stdout, c.Usage())
+	}
+	c.opts = opts
 	return
 }
 
 func (c *existCommand) Run(args []string) (err error) {
+	c.opts.Parse(args)
 	var (
 		bucket = ""
 		key    = ""
 	)
-	if len(args) == 0 {
+	argv := c.opts.Args()
+	if len(argv) == 0 {
 		return ErrArgument
 	}
-	for _, arg := range args {
-		xs := strings.Split(arg, ":")
-		bucket = xs[0]
-		var exist bool
-		if len(xs) > 1 {
-			key = strings.Join(xs[1:], ":")
+	if c.printRegion {
+		for _, arg := range argv {
+			xs := strings.Split(arg, ":")
+			bucket = xs[0]
+			var exist bool
+			if len(xs) > 1 {
+				key = strings.Join(xs[1:], ":")
+			}
+			exist,bucketLocation, err := c.exec(bucket, key)
+			if err != nil {
+				return err
+			}
+			if !exist {
+				return fmt.Errorf("%s does not exist", arg)
+			}
+			if c.env.Verbose {
+				fmt.Fprintf(os.Stdout, "%s does exist(%s)\n", arg, bucketLocation)
+			}
 		}
-		exist, err := c.exec(bucket, key)
-		if err != nil {
-			return err
-		}
-		if !exist {
-			return fmt.Errorf("%s does not exist", arg)
-		}
-		if c.env.Verbose {
-			fmt.Fprintf(os.Stdout, "%s does exist\n", arg)
+	} else {
+		for _, arg := range argv {
+			xs := strings.Split(arg, ":")
+			bucket = xs[0]
+			var exist bool
+			if len(xs) > 1 {
+				key = strings.Join(xs[1:], ":")
+			}
+			exist, _, err := c.exec(bucket, key)
+			if err != nil {
+				return err
+			}
+			if !exist {
+				return fmt.Errorf("%s does not exist", arg)
+			}
+			if c.env.Verbose {
+				fmt.Fprintf(os.Stdout, "%s does exist\n", arg)
+			}
 		}
 	}
 	return
 }
 
-func (c *existCommand) exec(bucket, key string) (exist bool, err error) {
+func (c *existCommand) exec(bucket, key string) (exist bool, bucketLocation string, err error) {
 	if key == "" {
 		return c.cli.DoesBucketExist(bucket)
 	}
-	exist, err = c.cli.DoesObjectExist(bucket, key)
+	exist, bucketLocation, err = c.cli.DoesObjectExist(bucket, key)
 	if (err == nil && !exist) && strings.HasPrefix(key, "/") {
 		return c.exec(bucket, strings.TrimLeft(key, "/"))
 	}

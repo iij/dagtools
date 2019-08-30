@@ -14,6 +14,8 @@ type spaceCommand struct {
 	cli           client.StorageClient
 	opts          *flag.FlagSet
 	humanReadable bool
+	region		  string
+	total		  bool
 }
 
 func (c *spaceCommand) Description() string {
@@ -22,7 +24,7 @@ func (c *spaceCommand) Description() string {
 
 func (c *spaceCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  space [-h]
+  space [-h] [-t] [-region]
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -33,6 +35,8 @@ func (c *spaceCommand) Init(env *env.Environment) (err error) {
 	c.cli, _ = client.NewStorageClient(env)
 	opts := flag.NewFlagSet("space", flag.ExitOnError)
 	opts.BoolVar(&c.humanReadable, "h", false, "Human-readable output. Use unit suffix(B, KB, MB...) for sizes")
+	opts.StringVar(&c.region, "region", "", "Identifier of region to print")
+	opts.BoolVar(&c.total, "t", false, "Print storage space of all region")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}
@@ -42,7 +46,31 @@ func (c *spaceCommand) Init(env *env.Environment) (err error) {
 
 func (c *spaceCommand) Run(args []string) (err error) {
 	c.opts.Parse(args)
-	usage, err := c.cli.GetStorageSpace()
+	if c.total {
+		regions, err := c.cli.GetRegions()
+		if err != nil {
+			return err
+		}
+		var contractTotal, accountTotal int64
+		for _, r := range regions.Regions {
+			space, err := c.cli.GetStorageSpace(r.Name)
+			if err != nil {
+				return err
+			}
+			accountTotal += space.AccountUsed
+			contractTotal += space.ContractUsed
+		}
+		fmt.Printf("%13s %13s\n", "contract", "account")
+		if c.humanReadable {
+			fmt.Printf("%13s %13s\n",
+				HumanReadableBytes(uint64(contractTotal)),
+				HumanReadableBytes(uint64(accountTotal)))
+		} else {
+			fmt.Printf("%13v %13v\n", contractTotal, accountTotal)
+		}
+		return nil
+	}
+	usage, err := c.cli.GetStorageSpace(c.region)
 	if err != nil {
 		return
 	}

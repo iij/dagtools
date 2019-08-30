@@ -22,7 +22,7 @@ type lsCommand struct {
 	outputTSV     bool
 	outputJSON    bool
 	includeETag   bool
-	location	  bool
+	region		  bool
 }
 
 func (c *lsCommand) Description() string {
@@ -31,7 +31,7 @@ func (c *lsCommand) Description() string {
 
 func (c *lsCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  ls [-r] [-h] [-tsv|-json] [-etag]  [<bucket>[:<file|dir>] ...]
+  ls [-r] [-h] [-region] [-tsv|-json] [-etag]  [<bucket>[:<file|dir>] ...]
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -47,7 +47,7 @@ func (c *lsCommand) Init(env *env.Environment) (err error) {
 	opts.BoolVar(&c.outputTSV, "tsv", false, "TSV output")
 	opts.BoolVar(&c.outputJSON, "json", false, "JSON output")
 	opts.BoolVar(&c.includeETag, "etag", false, "include ETag")
-	opts.BoolVar(&c.location, "l", false, "print location")
+	opts.BoolVar(&c.region, "region", false, "print region")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}
@@ -114,7 +114,7 @@ func (c *lsCommand) printBuckets(listing *client.BucketListing) {
 	if len(owner) > 20 {
 		owner = owner[0:20]
 	}
-	if c.location {
+	if c.region {
 		fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\t%s\n", "owner", "created", "region", "name")
 		for _, b := range listing.Buckets {
 			fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Location, b.Name)
@@ -129,7 +129,7 @@ func (c *lsCommand) printBuckets(listing *client.BucketListing) {
 
 func (c *lsCommand) printBucketsTSV(listing *client.BucketListing) {
 	owner := listing.Owner.String()
-	if c.location {
+	if c.region {
 		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\t%s\n", "owner", "created", "region", "name")
 		for _, b := range listing.Buckets {
 			fmt.Fprintf(os.Stdout, "%s\t%s\t%s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Location, b.Name)
@@ -160,7 +160,7 @@ func (c *lsCommand) listObjects(bucket string, prefix string, head bool) (num in
 	var listing *client.ObjectListing
 	_prefix := prefix
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		exists, err := c.cli.DoesObjectExist(bucket, prefix)
+		exists, _, err := c.cli.DoesObjectExist(bucket, prefix)
 		if err != nil {
 			return -1, err
 		}
@@ -198,7 +198,7 @@ func (c *lsCommand) listObjects(bucket string, prefix string, head bool) (num in
 }
 
 func (c *lsCommand) printObjectsHeader(listing *client.ObjectListing) {
-	if c.location {
+	if c.region {
 		fmt.Fprintf(os.Stdout, "[%s(%s):%s]\n", listing.Name, listing.Location, listing.Prefix)
 	} else {
 		fmt.Fprintf(os.Stdout, "[%s:%s]\n", listing.Name, listing.Prefix)
