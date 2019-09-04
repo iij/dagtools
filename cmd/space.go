@@ -24,7 +24,7 @@ func (c *spaceCommand) Description() string {
 
 func (c *spaceCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  space [-h] [-t] [-region]
+  space [-h] [-t] [-region=ap1(or ap2)]
 
 Options:
 %s`, OptionUsage(c.opts))

@@ -47,7 +47,7 @@ func (c *lsCommand) Init(env *env.Environment) (err error) {
 	opts.BoolVar(&c.outputTSV, "tsv", false, "TSV output")
 	opts.BoolVar(&c.outputJSON, "json", false, "JSON output")
 	opts.BoolVar(&c.includeETag, "etag", false, "include ETag")
-	opts.BoolVar(&c.region, "region", false, "print region")
+	opts.BoolVar(&c.region, "region", false, "output bucket region")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}

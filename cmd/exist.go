@@ -23,7 +23,7 @@ func (c *existCommand) Description() string {
 
 func (c *existCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  exist [<bucket>[:<key>] ...]
+  exist [-region] [<bucket>[:<key>] ...]
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -33,7 +33,7 @@ func (c *existCommand) Init(env *env.Environment) (err error) {
 	c.env = env
 	c.cli, _ = client.NewStorageClient(env)
 	opts := flag.NewFlagSet("exist", flag.ExitOnError)
-	opts.BoolVar(&c.printRegion, "region", false, "print region")
+	opts.BoolVar(&c.printRegion, "region", false, "output bucket region")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}

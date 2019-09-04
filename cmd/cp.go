@@ -17,12 +17,18 @@ type cpCommand struct {
 }
 
 func (c *cpCommand) Description() string {
-	return "copy object"
+	return "copy object or directory"
 }
 
 func (c *cpCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  cp `)
+  cp <bucket>:<key> <bucket>:
+  cp <bucket>:<key> <bucket>:<prefix>
+  cp -r <bucket>:<prefix>/ <bucket>:
+  cp -r <bucket>:<prefix>/ <bucket>:<prefix>/
+
+Options:
+%s`, OptionUsage(c.opts))
 }
 
 func (c *cpCommand) Init(env *env.Environment) (err error) {

@@ -26,7 +26,7 @@ func (c *trafficCommand) Description() string {
 
 func (c *trafficCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  traffic [-h] [-b=N] [yyyyMMdd]
+  traffic [-h] [-t] [-region=ap1(or ap2)] [-b=N] [yyyyMMdd]
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -72,22 +72,31 @@ func (c *trafficCommand) Run(args []string) (err error) {
 			return err
 		}
 		if c.backwardTo >= 0 {
-			var totalResult client.ListTrafficResult
-			for _, r := range region.Regions {
-				result, err := c.cli.ListNetworkTraffics(c.backwardTo, r.Name)
+			var totalResult []client.DownTraffic
+			var result		 *client.ListTrafficResult
+			for i, r := range region.Regions {
+				result, err = c.cli.ListNetworkTraffics(c.backwardTo, r.Name)
 				if err != nil {
 					return err
 				}
-
+				// にるぽ対策だけど常套手段がありそう
+				if i == 0 {
+					for i := range result.DownTraffics {
+						totalResult = append(totalResult,*result.DownTraffics[i])
+						totalResult[i].Amount = 0
+					}
+				}
 				for i := range result.DownTraffics {
-					totalResult.DownTraffics[i].Amount += result.DownTraffics[i].Amount
+					totalResult[i].Amount += result.DownTraffics[i].Amount
+					fmt.Println(result.DownTraffics[i].Amount)
+					fmt.Println(totalResult[i].Amount)
 				}
 			}
 			if err == nil {
 				c.printHeader()
-				traffics := totalResult.DownTraffics
+				traffics := totalResult
 				for i := range traffics {
-					c.printTraffic(traffics[i])
+					c.printTraffic(&traffics[i])
 				}
 			}
 			return err
