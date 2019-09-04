@@ -35,8 +35,8 @@ func (c *spaceCommand) Init(env *env.Environment) (err error) {
 	c.cli, _ = client.NewStorageClient(env)
 	opts := flag.NewFlagSet("space", flag.ExitOnError)
 	opts.BoolVar(&c.humanReadable, "h", false, "Human-readable output. Use unit suffix(B, KB, MB...) for sizes")
-	opts.StringVar(&c.region, "region", "", "Identifier of region to print")
-	opts.BoolVar(&c.total, "t", false, "Print storage space of all region")
+	opts.StringVar(&c.region, "region", "", "Identifier of region")
+	opts.BoolVar(&c.total, "t", false, "Storage space of all regions")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}

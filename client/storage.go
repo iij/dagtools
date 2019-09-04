@@ -68,8 +68,8 @@ type StorageClient interface {
 
 	// Service API methods
 	GetStorageSpace(region string) (*StorageSpace, error)
-	ListNetworkTraffics(backwardTo int) (*ListTrafficResult, error)
-	GetNetworkTraffic(date string) (*DownTraffic, error)
+	ListNetworkTraffics(backwardTo int, region string) (*ListTrafficResult, error)
+	GetNetworkTraffic(date string, region string) (*DownTraffic, error)
 	GetRegions() (regions *Regions, err error)
 
 	// Bucket API methods
@@ -87,6 +87,7 @@ type StorageClient interface {
 	NextListObjects(previous *ObjectListing) (*ObjectListing, error)
 	PutObject(bucket, key string, data *os.File, metadata *ObjectMetadata) error
 	PutObjectAt(bucket, key string, data *os.File, off, length int64, metadata *ObjectMetadata) error
+	PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string) error
 	GetObject(bucket, key string) (io.ReadCloser, error)
 	DoesObjectExist(bucket, key string) (bool, string, error)
 	GetObjectSummary(bucket, key string) (*ObjectSummary, error)
@@ -702,6 +703,46 @@ func (cli *DefaultStorageClient) PutObjectAt(bucket, key string, f *os.File, off
 	return nil
 }
 
+func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string) error {
+	if cli.env.Debug {
+		cli.env.Logger.Printf("Storage REST API Call: PUT Object(copy) {source bucket: %q, source key: %q, dist bucket: %q, dist key: %q}", sourceBucket, sourceKey, distBucket, distKey)
+	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return err
+	}
+	bucketLocation, err := cli.GetBucketLocation(distBucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
+	}
+	defaultEndpoint := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
+	target := cli.Config.buildURL(distBucket, distKey, nil)
+	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
+		req, err := http.NewRequest("PUT", target, nil)
+		if err != nil {
+			cli.Logger.Printf("Failed to create a new HTTP request for put object(copy). reason: %v\n", err)
+			return nil, err
+		}
+		source := "/"+sourceBucket+"/"+sourceKey
+		source = url.QueryEscape(source)
+		req.Header.Set("x-iijgio-copy-source", source)
+		return req, nil
+	}, nil)
+	cli.Config.Endpoint = defaultEndpoint
+	if err != nil {
+		cli.Logger.Println("Failed to execute HTTP request.", err)
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // GetObject downloads an object (GET Object)
 func (cli *DefaultStorageClient) GetObject(bucket, key string) (r io.ReadCloser, err error) {
 	if cli.env.Debug {
@@ -917,7 +958,7 @@ func (cli *DefaultStorageClient) DeleteMultipleObjects(bucket string, keys []str
 		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
 		return nil, err
 	}
-	defaultEndpoint := cli.Config.Endpoint
+	defaultLocation := cli.Config.Endpoint
 	for _, r := range locations.Regions {
 		if r.Name == bucketLocation {
 			cli.Config.Endpoint = r.Endpoint
@@ -941,7 +982,7 @@ func (cli *DefaultStorageClient) DeleteMultipleObjects(bucket string, keys []str
 	if err != nil {
 		return
 	}
-	cli.Config.Endpoint = defaultEndpoint
+	cli.Config.Endpoint = defaultLocation
 	defer resp.Body.Close()
 	return res, nil
 }
@@ -967,6 +1008,22 @@ func (cli *DefaultStorageClient) ListMultipartUploads(bucket, prefix, keyMarker,
 	if maxUploads > 0 {
 		queries["max-uploads"] = strconv.Itoa(maxUploads)
 	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get bucket location. reason: %v\n", err)
+		return nil, err
+	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return nil, err
+	}
+	defaultEndpoint := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(bucket, "", queries)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("GET", target, nil)
@@ -980,6 +1037,7 @@ func (cli *DefaultStorageClient) ListMultipartUploads(bucket, prefix, keyMarker,
 		cli.Logger.Printf("Failed to execute HTTP request. reason: %v\n", err)
 		return nil, err
 	}
+	cli.Config.Endpoint = defaultEndpoint
 	defer resp.Body.Close()
 	prefixes := make([]string, 0)
 	for _, cm := range listing.CommonPrefixes {
@@ -1029,6 +1087,18 @@ func (cli *DefaultStorageClient) AbortMultipartUpload(upload *MultipartUpload) e
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Abort Multipart Upload: %v", upload)
 	}
+	defaultLocation := cli.Config.Endpoint
+	bucketLocation, err := cli.GetBucketLocation(upload.Bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket Location. reason: %v\n", err)
+		return err
+	}
+	locations, err := cli.GetRegions()
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(upload.Bucket, upload.Key, map[string]string{"uploadId": upload.UploadID})
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("DELETE", target, nil)
@@ -1042,6 +1112,7 @@ func (cli *DefaultStorageClient) AbortMultipartUpload(upload *MultipartUpload) e
 		cli.Logger.Println(err.Error())
 		return err
 	}
+	cli.Config.Endpoint = defaultLocation
 	defer resp.Body.Close()
 	if resp.StatusCode != 204 {
 		cli.Logger.Printf("Failed to abort the multipart upload. StatusCode: 204 != %v", resp.StatusCode)
@@ -1469,9 +1540,20 @@ func (cli *DefaultStorageClient) GetStorageSpace(region string) (usage *StorageS
 }
 
 // ListNetworkTraffics returns list of network traffic every 1 day.
-func (cli *DefaultStorageClient) ListNetworkTraffics(backwardTo int) (result *ListTrafficResult, err error) {
+func (cli *DefaultStorageClient) ListNetworkTraffics(backwardTo int, region string) (result *ListTrafficResult, err error) {
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: GET Service traffic (backwardTo: %v)", backwardTo)
+	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return nil, err
+	}
+	defaultEndpoint := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == region {
+			cli.Config.Endpoint = r.Endpoint
+		}
 	}
 	urlStr := cli.Config.buildURL("", "", map[string]string{"traffic": "", "backwardTo": strconv.Itoa(backwardTo)})
 	_, err = cli.DoAndRetry(func() (*http.Request, error) {
@@ -1486,14 +1568,26 @@ func (cli *DefaultStorageClient) ListNetworkTraffics(backwardTo int) (result *Li
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
 	}
+	cli.Config.Endpoint = defaultEndpoint
 	return
 }
 
 // GetNetworkTraffic returns a network traffic of specified date.
-func (cli *DefaultStorageClient) GetNetworkTraffic(date string) (traffic *DownTraffic, err error) {
+func (cli *DefaultStorageClient) GetNetworkTraffic(date string, region string) (traffic *DownTraffic, err error) {
 	var traffics *ListTrafficResult
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: GET Service traffic (chargeDate: %s)", date)
+	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return nil, err
+	}
+	defaultEndpoint := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == region {
+			cli.Config.Endpoint = r.Endpoint
+		}
 	}
 	urlStr := cli.Config.buildURL("", "", map[string]string{"traffic": "", "chargeDate": date})
 	_, err = cli.DoAndRetry(func() (*http.Request, error) {
@@ -1508,6 +1602,7 @@ func (cli *DefaultStorageClient) GetNetworkTraffic(date string) (traffic *DownTr
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
 	}
+	cli.Config.Endpoint = defaultEndpoint
 	if traffics != nil && len(traffics.DownTraffics) > 0 {
 		return traffics.DownTraffics[0], nil
 	}
