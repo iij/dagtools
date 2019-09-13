@@ -31,7 +31,7 @@ func TestCallSpaceCommand(t *testing.T) {
 	c.Init(&e)
 	ctrl := gomock.NewController(t)
 	mock := client.NewMockStorageClient(ctrl)
-	mock.EXPECT().GetStorageSpace().Return(nil, errors.New("dummy"))
+	mock.EXPECT().GetStorageSpace(gomock.Any()).Return(nil, errors.New("dummy"))
 	c.cli = mock
 	err := c.Run(parseArgs(""))
 	if err == nil {
@@ -53,7 +53,7 @@ func TestCallSpaceCommandWithOptions(t *testing.T) {
 	c.Init(&e)
 	ctrl := gomock.NewController(t)
 	mock := client.NewMockStorageClient(ctrl)
-	mock.EXPECT().GetStorageSpace().Return(nil, errors.New("dummy"))
+	mock.EXPECT().GetStorageSpace(gomock.Any()).Return(nil, errors.New("dummy"))
 	c.cli = mock
 	err := c.Run(parseArgs("-h"))
 	if err == nil {

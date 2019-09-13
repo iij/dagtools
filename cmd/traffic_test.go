@@ -31,7 +31,7 @@ func TestGetTrafficOfDay(t *testing.T) {
 	c.Init(&e)
 	ctrl := gomock.NewController(t)
 	mock := client.NewMockStorageClient(ctrl)
-	mock.EXPECT().GetNetworkTraffic("20151020").Return(nil, errors.New("dummy"))
+	mock.EXPECT().GetNetworkTraffic("20151020", gomock.Any()).Return(nil, errors.New("dummy"))
 	c.cli = mock
 	err := c.Run(parseArgs("20151020"))
 	if err == nil {
@@ -53,7 +53,7 @@ func TestListTraffics(t *testing.T) {
 	c.Init(&e)
 	ctrl := gomock.NewController(t)
 	mock := client.NewMockStorageClient(ctrl)
-	mock.EXPECT().ListNetworkTraffics(2).Return(nil, errors.New("dummy"))
+	mock.EXPECT().ListNetworkTraffics(2, gomock.Any()).Return(nil, errors.New("dummy"))
 	c.cli = mock
 	err := c.Run(parseArgs("-b 2"))
 	if err == nil {
@@ -90,7 +90,7 @@ func TestCallTrafficCommandWithOptions(t *testing.T) {
 	c.Init(&e)
 	ctrl := gomock.NewController(t)
 	mock := client.NewMockStorageClient(ctrl)
-	mock.EXPECT().GetNetworkTraffic("20151020").Return(nil, errors.New("dummy"))
+	mock.EXPECT().GetNetworkTraffic("20151020", gomock.Any()).Return(nil, errors.New("dummy"))
 	c.cli = mock
 	err := c.Run(parseArgs("-h -b 2 20151020"))
 	if err == nil {

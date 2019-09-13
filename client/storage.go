@@ -77,6 +77,7 @@ type StorageClient interface {
 	SelectRegionPutBucket(bucket string, region string) error
 	PutBucket(bucket string) error
 	DeleteBucket(bucket string) error
+	GetBucketLocation(bucket string) (bucketLocation string, err error)
 	DoesBucketExist(bucket string) (bool, string, error)
 	GetBucketPolicy(bucket string) (io.ReadCloser, error)
 	PutBucketPolicy(bucket string, policy io.Reader) error
@@ -241,16 +242,16 @@ func (cli *DefaultStorageClient) ListBuckets() (listing *BucketListing, err erro
 		}
 		return req, nil
 	}, &listing)
-	for i, _ := range listing.Buckets {
+	if err != nil {
+		cli.Logger.Println("Failed to execute HTTP request.", err)
+		return
+	}
+	for i := range listing.Buckets {
 		listing.Buckets[i].Location, err = cli.GetBucketLocation(listing.Buckets[i].Name)
 		if err != nil {
 			cli.Logger.Println("Failed to get bucket location.", err)
 			return
 		}
-	}
-	if err != nil {
-		cli.Logger.Println("Failed to execute HTTP request.", err)
-		return
 	}
 	defer resp.Body.Close()
 	return
@@ -293,6 +294,10 @@ func (cli *DefaultStorageClient) GetRegions() (regions *Regions, err error){
 		}
 		return req, nil
 	}, &regions)
+	if err != nil {
+		cli.Logger.Printf("Failed to execute HTTP request. reason: %s", err)
+		return nil, err
+	}
 	defer resp.Body.Close()
 	cli.Config.AccessKeyID = accesskey
 	return
@@ -662,14 +667,14 @@ func (cli *DefaultStorageClient) PutObjectAt(bucket, key string, f *os.File, off
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: PUT Object {bucket: %q, key: %q}", bucket, key)
 	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
+	}
 	locations, err := cli.GetRegions()
 	if err != nil {
 		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
 		return err
-	}
-	bucketLocation, err := cli.GetBucketLocation(bucket)
-	if err != nil {
-		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
 	}
 	defaultEndpoint := cli.Config.Endpoint
 	for _, r := range locations.Regions {
@@ -707,14 +712,14 @@ func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBuck
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: PUT Object(copy) {source bucket: %q, source key: %q, dist bucket: %q, dist key: %q}", sourceBucket, sourceKey, distBucket, distKey)
 	}
+	bucketLocation, err := cli.GetBucketLocation(distBucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
+	}
 	locations, err := cli.GetRegions()
 	if err != nil {
 		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
 		return err
-	}
-	bucketLocation, err := cli.GetBucketLocation(distBucket)
-	if err != nil {
-		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
 	}
 	defaultEndpoint := cli.Config.Endpoint
 	for _, r := range locations.Regions {
@@ -748,14 +753,14 @@ func (cli *DefaultStorageClient) GetObject(bucket, key string) (r io.ReadCloser,
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: GET Object {bucket: %q, key: %q}", bucket, key)
 	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
+	}
 	locations, err := cli.GetRegions()
 	if err != nil {
 		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
 		return nil, err
-	}
-	bucketLocation, err := cli.GetBucketLocation(bucket)
-	if err != nil {
-		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
 	}
 	defaultEndpoint := cli.Config.Endpoint
 	for _, r := range locations.Regions {
@@ -790,13 +795,17 @@ func (cli *DefaultStorageClient) DoesObjectExist(bucket, key string) (bool, stri
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: HEAD Object {bucket: %q, key: %q}", bucket, key)
 	}
-	defaultLocation := cli.Config.Endpoint
 	bucketLocation, err := cli.GetBucketLocation(bucket)
 	if err != nil {
 		cli.Logger.Printf("Failed to get bucket Location. reason: %v\n", err)
 		return false, bucketLocation, err
 	}
 	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return false, bucketLocation, err
+	}
+	defaultLocation := cli.Config.Endpoint
 	for _, r := range locations.Regions {
 		if r.Name == bucketLocation {
 			cli.Config.Endpoint = r.Endpoint
@@ -909,13 +918,17 @@ func (cli *DefaultStorageClient) DeleteObject(bucket, key string) (err error) {
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: DELETE Object {bucket: %q, key: %q}", bucket, key)
 	}
-	defaultLocation := cli.Config.Endpoint
 	bucketLocation, err := cli.GetBucketLocation(bucket)
 	if err != nil {
 		cli.Logger.Printf("Failed to get bucket Location. reason: %v\n", err)
 		return err
 	}
 	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return err
+	}
+	defaultLocation := cli.Config.Endpoint
 	for _, r := range locations.Regions {
 		if r.Name == bucketLocation {
 			cli.Config.Endpoint = r.Endpoint
@@ -930,6 +943,7 @@ func (cli *DefaultStorageClient) DeleteObject(bucket, key string) (err error) {
 		}
 		return req, nil
 	}, nil)
+	cli.Config.Endpoint = defaultLocation
 	if err != nil {
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
@@ -1087,13 +1101,17 @@ func (cli *DefaultStorageClient) AbortMultipartUpload(upload *MultipartUpload) e
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Abort Multipart Upload: %v", upload)
 	}
-	defaultLocation := cli.Config.Endpoint
 	bucketLocation, err := cli.GetBucketLocation(upload.Bucket)
 	if err != nil {
 		cli.Logger.Printf("Failed to get bucket Location. reason: %v\n", err)
 		return err
 	}
 	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return err
+	}
+	defaultLocation := cli.Config.Endpoint
 	for _, r := range locations.Regions {
 		if r.Name == bucketLocation {
 			cli.Config.Endpoint = r.Endpoint

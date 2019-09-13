@@ -88,8 +88,6 @@ func (c *trafficCommand) Run(args []string) (err error) {
 				}
 				for i := range result.DownTraffics {
 					totalResult[i].Amount += result.DownTraffics[i].Amount
-					fmt.Println(result.DownTraffics[i].Amount)
-					fmt.Println(totalResult[i].Amount)
 				}
 			}
 			if err == nil {
