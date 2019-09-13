@@ -868,6 +868,22 @@ func (cli *DefaultStorageClient) GetObjectMetadata(bucket, key string) (o *Objec
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: HEAD Object {bucket: %q, key: %q}", bucket, key)
 	}
+	bucketLocation, err := cli.GetBucketLocation(bucket)
+	if err != nil {
+		cli.Logger.Printf("Failed to get bucket Location. reason: %v\n", err)
+		return nil, err
+	}
+	locations, err := cli.GetRegions()
+	if err != nil {
+		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
+		return nil, err
+	}
+	defaultLocation := cli.Config.Endpoint
+	for _, r := range locations.Regions {
+		if r.Name == bucketLocation {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
 	target := cli.Config.buildURL(bucket, key, nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("HEAD", target, nil)
@@ -877,6 +893,7 @@ func (cli *DefaultStorageClient) GetObjectMetadata(bucket, key string) (o *Objec
 		}
 		return req, nil
 	}, nil)
+	cli.Config.Endpoint = defaultLocation
 	if resp == nil && err != nil {
 		return
 	}
@@ -948,7 +965,6 @@ func (cli *DefaultStorageClient) DeleteObject(bucket, key string) (err error) {
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
 	}
-	cli.Config.Endpoint = defaultLocation
 	defer resp.Body.Close()
 	return
 }
