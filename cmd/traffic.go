@@ -50,7 +50,10 @@ func (c *trafficCommand) Init(env *env.Environment) (err error) {
 func (c *trafficCommand) Run(args []string) (err error) {
 	c.opts.Parse(args)
 	argv := c.opts.Args()
-	if c.total {
+	if c.total && c.region != "" {
+		return ErrArgument
+	}
+	if c.total && c.region == "" {
 		region, err := c.cli.GetRegions()
 		if err != nil {
 			return err

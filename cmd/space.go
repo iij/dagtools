@@ -46,7 +46,10 @@ func (c *spaceCommand) Init(env *env.Environment) (err error) {
 
 func (c *spaceCommand) Run(args []string) (err error) {
 	c.opts.Parse(args)
-	if c.total {
+	if c.total && c.region != "" {
+		return ErrArgument
+	}
+	if c.total && c.region == "" {
 		regions, err := c.cli.GetRegions()
 		if err != nil {
 			return err
