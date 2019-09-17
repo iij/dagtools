@@ -82,7 +82,7 @@ func (c *trafficCommand) Run(args []string) (err error) {
 				// にるぽ対策だけど常套手段がありそう
 				if i == 0 {
 					for i := range result.DownTraffics {
-						totalResult = append(totalResult,*result.DownTraffics[i])
+						totalResult = append(totalResult, *result.DownTraffics[i])
 						totalResult[i].Amount = 0
 					}
 				}

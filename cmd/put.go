@@ -34,7 +34,7 @@ func (c *putCommand) Usage() string {
   put <file1> [<file2>...] <bucket>:<prefix>/
   put -r <dir> <bucket>:<prefix>[/]
   put -upload-id=<upload-id> <file> <bucket>[:<key>]
-  put -region=<region=ap1(or ap2)> <file> <bucket>[:<key>]
+  put -region=<ap1(or ap2)> <file> <bucket>[:<key>]
   put <bucket>:<key> < <file>
 
 Options:
