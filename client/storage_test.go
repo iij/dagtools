@@ -565,7 +565,11 @@ func TestGetObjectMetadataApi(t *testing.T) {
 	}
 	mockresp.StatusCode = 200
 	mockresp.ContentLength = 1
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	object, err := client.GetObjectMetadata("mybucket", "")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -950,7 +954,11 @@ func TestGetObjectSummaryApiHTTPErr(t *testing.T) {
 func TestGetObjectMetadataApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	_, err := client.GetObjectMetadata("mybucket", "")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -960,7 +968,11 @@ func TestGetObjectMetadataApiHTTPNotFoundErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 404
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	var foo *Object
 	object, err := client.GetObjectMetadata("mybucket", "")

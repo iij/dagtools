@@ -19,7 +19,7 @@ func TestSpaceUsage(t *testing.T) {
 	c.Init(&e)
 	usage := c.Usage()
 	if !strings.HasPrefix(usage, "Command Usage:") {
-		t.Errorf("Failed to get a cat command usage. usage: %q", usage)
+		t.Errorf("Failed to get a space command usage. usage: %q", usage)
 	}
 }
 

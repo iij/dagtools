@@ -64,11 +64,10 @@ func (c *cpCommand) Run(args []string) (err error) {
 	dist := strings.Split(argv[1], ":")
 	distBucket = dist[0]
 	distKey = dist[1]
-	fmt.Println(sourceBucket, sourceKey, distBucket, distKey)
 
 	if c.recursive == false {
 		// object -> bucket
-		if !strings.HasSuffix(sourceKey, "/") && distKey == ""{
+		if !strings.HasSuffix(sourceKey, "/") && sourceKey != "" && distKey == "" {
 			slice := strings.Split(sourceKey, "/")
 			err = c.cli.PutObjectCopy(sourceBucket,sourceKey,distBucket,slice[len(slice)-1])
 			if err != nil {
@@ -80,7 +79,7 @@ func (c *cpCommand) Run(args []string) (err error) {
 			return nil
 		}
 		// object -> dir
-		if !strings.HasSuffix(sourceKey, "/") && distKey != "" {
+		if !strings.HasSuffix(sourceKey, "/") && sourceKey != "" && distKey != "" {
 			slice := strings.Split(sourceKey, "/")
 			if !strings.HasSuffix(distKey, "/") {
 				distKey += "/"
