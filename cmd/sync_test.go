@@ -163,7 +163,7 @@ func TestSyncNotExistDir(t *testing.T) {
 
 	err := c.Run(parseArgs(fmt.Sprintf("%s %s:%s", from, bucket, to)))
 	if err.Error() != "lstat nosuchdir/: no such file or directory" {
-		if err.Error() != "GetFileAttributesEx nosuchdir\\: The system cannot find the file specified." {
+		if err.Error() != "CreateFile nosuchdir\\: The system cannot find the file specified." {
 			t.Error("This directory is not exists.", err)
 		}
 	}
@@ -183,7 +183,7 @@ func TestSyncNotDirLocalToDag(t *testing.T) {
 
 	err := c.Run(parseArgs(fmt.Sprintf("%s %s:%s", from, bucket, to)))
 	if err.Error() != "lstat test_files/test-00.txt/: not a directory" {
-		if err.Error() != "GetFileAttributesEx test_files\\test-00.txt\\: The filename, directory name, or volume label syntax is incorrect." {
+		if err.Error() != "CreateFile test_files\\test-00.txt\\: The filename, directory name, or volume label syntax is incorrect." {
 			t.Error("This Object is not a directory.", err)
 		}
 	}

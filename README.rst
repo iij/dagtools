@@ -124,6 +124,8 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
              rm: delete a bucket or object[s]
             put: put a bucket or object[s]
            help: print a command usage
+             cp: copy object or directory
+         region: display all regions info
            sync: synchronize with objects on DAG storage and local files
          policy: manage a bucket policy (put, cat, rm)
           space: display used storage space
@@ -135,10 +137,13 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
 
 バケット新規作成(PUT Bucket)
 ----------------------------
-::
+デフォルトのリージョン（設定ファイルのエンドポイント）でのバケット作成::
 
    $ dagtools put mybucket
 
+リージョンを指定してバケット作成::
+
+   $ dagtools put -region=ap1(or ap2) mybucket
 
 ファイルのアップロード(PUT Object)
 ----------------------------------
@@ -239,12 +244,18 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
 
    $ dagtools ls
 
+バケットが存在するリージョンを表示する::
+   $ dagtools ls -region
+
 
 オブジェクトの一覧表示(List Objects)
 ------------------------------------
 ルートディレクトリのオブジェクト一覧::
 
   $ dagtools ls mybucket
+
+バケットの存在するリージョンを表示する::
+  $ dagtools ls -region mybucket
 
 指定したディレクトリのオブジェクト一覧::
 
@@ -360,9 +371,19 @@ DAGストレージからローカルのディレクトリに同期::
 
 ストレージ使用量の取得(GET Service space)
 -----------------------------------------
-::
+デフォルトのリ－ジョンにおけるストレージ使用量の取得::
 
    $ dagtools space
+
+リージョンを指定してストレージ使用量を取得::
+
+   $ dagtools space -region=ap1(or ap2)
+
+全てのリージョンでのストレージ使用量を取得::
+
+   $ dagtools space -t
+
+- -regionオプションと-tオプションは同時に使用することはできない
 
 ストレージに対するネットワーク通信量の取得(GET Service traffic)
 ---------------------------------------------------------------
@@ -375,6 +396,14 @@ DAGストレージからローカルのディレクトリに同期::
 
   $ dagtools traffic -b 1
 
+リージョンを指定して取得::
+
+  $ dagtools traffic -region=ap1 20150401
+
+全リージョンでのネットワーク通信料を取得
+
+  $　dagtools traffic -t 20150401
+
 
 バケットまたはオブジェクトの存在確認(HEAD Bucket, HEAD Object)
 --------------------------------------------------------------
@@ -386,6 +415,10 @@ DAGストレージからローカルのディレクトリに同期::
 オブジェクトの存在確認::
 
   $ dagtools exist mybucket:foo
+
+バケットが存在するリージョンも表示::
+
+  $ dagtools exist -region mybucket:foo
 
 .. note::
 
