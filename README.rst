@@ -171,6 +171,28 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
   $ dagtools put -upload-id=E-Ckgc1u-fAEIhDcPYcx430ygDjDq1IO7zILJF9W1HpUrbjq3UVlbV23UA45UFNS9nocgth7vsOh.zWaqGm.Jg-UGRiX6WCBPvNM_teEwa4- path/to/file mybucket:foo/bar/my-object
 
 
+バケット間でファイルをコピー(Copy)
+---------------------------------
+オブジェクトをバケット直下にコピー::
+  $ dagtools cp mybucket1:file1 mybucket2:
+
+オブジェクトをディレクトリにコピー::
+  $ dagtools cp mybucket1:file1 mybucket2:foo/
+
+ディレクトリをバケットにコピー::
+  $ dagtools cp -r mybucket1:foo/bar/ mybucket2:foo/
+
+バケットの中身をすべて別バケットにコピー::
+  $ dagtools cp -r mybucket1: mybucket2:
+
+.. note::
+   ディレクトリ・バケットをコピーする場合は、-rオプションを使用してください
+
+すべてのリージョン情報を表示する(GET Regions)
+-------------------------------------------
+::
+  $ dagtools region
+
 オブジェクトの取得(GET Object)
 ------------------------------
 カレントディレクトリに書き出す::
