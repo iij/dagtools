@@ -8,6 +8,7 @@ APP_PACKAGE ?= github.com/iij/dagtools
 
 # amd64, 386
 ARCH_TYPE ?= amd64
+#ARCH_TYPE ?= 386
 
 BUILD_DIR ?= build
 BUILD_BIN_DIR := $(BUILD_DIR)/$(OS_TYPE)_$(ARCH_TYPE)

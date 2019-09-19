@@ -174,23 +174,29 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
 バケット間でファイルをコピー(Copy)
 ---------------------------------
 オブジェクトをバケット直下にコピー::
+
   $ dagtools cp mybucket1:file1 mybucket2:
 
 オブジェクトをディレクトリにコピー::
+
   $ dagtools cp mybucket1:file1 mybucket2:foo/
 
 ディレクトリをバケットにコピー::
+
   $ dagtools cp -r mybucket1:foo/bar/ mybucket2:foo/
 
 バケットの中身をすべて別バケットにコピー::
+
   $ dagtools cp -r mybucket1: mybucket2:
 
 .. note::
+
    ディレクトリ・バケットをコピーする場合は、-rオプションを使用してください
 
 すべてのリージョン情報を表示する(GET Regions)
 -------------------------------------------
 ::
+
   $ dagtools region
 
 オブジェクトの取得(GET Object)
@@ -267,6 +273,7 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
    $ dagtools ls
 
 バケットが存在するリージョンを表示する::
+
    $ dagtools ls -region
 
 
@@ -277,6 +284,7 @@ abortOnFailure      | マルチパートアップロードを使用したアッ�
   $ dagtools ls mybucket
 
 バケットの存在するリージョンを表示する::
+
   $ dagtools ls -region mybucket
 
 指定したディレクトリのオブジェクト一覧::
