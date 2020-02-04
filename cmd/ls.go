@@ -22,7 +22,6 @@ type lsCommand struct {
 	outputTSV     bool
 	outputJSON    bool
 	includeETag   bool
-	region		  bool
 }
 
 func (c *lsCommand) Description() string {
@@ -31,7 +30,7 @@ func (c *lsCommand) Description() string {
 
 func (c *lsCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  ls [-r] [-h] [-region] [-tsv|-json] [-etag]  [<bucket>[:<file|dir>] ...]
+  ls [-r] [-h] [-tsv|-json] [-etag]  [<bucket>[:<file|dir>] ...]
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -47,7 +46,6 @@ func (c *lsCommand) Init(env *env.Environment) (err error) {
 	opts.BoolVar(&c.outputTSV, "tsv", false, "TSV output")
 	opts.BoolVar(&c.outputJSON, "json", false, "JSON output")
 	opts.BoolVar(&c.includeETag, "etag", false, "include ETag")
-	opts.BoolVar(&c.region, "region", false, "output bucket region")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}
@@ -114,33 +112,18 @@ func (c *lsCommand) printBuckets(listing *client.BucketListing) {
 	if len(owner) > 20 {
 		owner = owner[0:20]
 	}
-	if c.region {
-		fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\t%s\n", "owner", "created", "region", "name")
-		for _, b := range listing.Buckets {
-			fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Location, b.Name)
-		}
-	} else {
-		fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\n", "owner", "created", "name")
-		for _, b := range listing.Buckets {
-			fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Name)
-		}
+	fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\n", "owner", "created", "name")
+	for _, b := range listing.Buckets {
+		fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Name)
 	}
 }
 
 func (c *lsCommand) printBucketsTSV(listing *client.BucketListing) {
 	owner := listing.Owner.String()
-	if c.region {
-		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\t%s\n", "owner", "created", "region", "name")
-		for _, b := range listing.Buckets {
-			fmt.Fprintf(os.Stdout, "%s\t%s\t%s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Location, b.Name)
-		}
-	} else {
-		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", "owner", "created", "name")
-		for _, b := range listing.Buckets {
-			fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Name)
-		}
+	fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", "owner", "created", "name")
+	for _, b := range listing.Buckets {
+		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Name)
 	}
-
 }
 
 func (c *lsCommand) printBucketsJSON(listing *client.BucketListing) {
@@ -198,11 +181,7 @@ func (c *lsCommand) listObjects(bucket string, prefix string, head bool) (num in
 }
 
 func (c *lsCommand) printObjectsHeader(listing *client.ObjectListing) {
-	if c.region {
-		fmt.Fprintf(os.Stdout, "[%s(%s):%s]\n", listing.Name, listing.Location, listing.Prefix)
-	} else {
-		fmt.Fprintf(os.Stdout, "[%s:%s]\n", listing.Name, listing.Prefix)
-	}
+	fmt.Fprintf(os.Stdout, "[%s:%s]\n", listing.Name, listing.Prefix)
 	fmt.Fprintf(os.Stdout, "%20s  %16s  %20s", "owner", "size", "last-modified")
 	if c.includeETag {
 		fmt.Fprintf(os.Stdout, "  %38s", "etag")

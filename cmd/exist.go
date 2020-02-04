@@ -59,7 +59,7 @@ func (c *existCommand) Run(args []string) (err error) {
 			if len(xs) > 1 {
 				key = strings.Join(xs[1:], ":")
 			}
-			exist,bucketLocation, err := c.exec(bucket, key)
+			exist, bucketLocation, err := c.exec(bucket, key)
 			if err != nil {
 				return err
 			}

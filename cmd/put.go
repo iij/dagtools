@@ -68,7 +68,7 @@ func (c *putCommand) Run(args []string) (err error) {
 
 	// Target resource: "{Bucket}:{Key}"
 	slice := strings.Split(argv[len(argv)-1], ":")
-	if len(slice) < 1 {
+		if len(slice) < 1 {
 		return ErrArgument
 	}
 	bucket = slice[0]

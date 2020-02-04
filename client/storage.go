@@ -246,13 +246,6 @@ func (cli *DefaultStorageClient) ListBuckets() (listing *BucketListing, err erro
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return
 	}
-	for i := range listing.Buckets {
-		listing.Buckets[i].Location, err = cli.GetBucketLocation(listing.Buckets[i].Name)
-		if err != nil {
-			cli.Logger.Println("Failed to get bucket location.", err)
-			return
-		}
-	}
 	defer resp.Body.Close()
 	return
 }
@@ -620,7 +613,6 @@ func (cli *DefaultStorageClient) ListObjects(bucket, prefix, marker, delimiter s
 		return nil, err
 	}
 	cli.Config.Endpoint = defaultEndpoint
-	listing.Location = bucketLocation
 	defer resp.Body.Close()
 	return
 }
