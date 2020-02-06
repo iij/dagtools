@@ -51,7 +51,6 @@ var (
 		"partNumber": true,
 		"uploadId":   true,
 	}
-
 )
 
 func init() {
@@ -88,7 +87,7 @@ type StorageClient interface {
 	NextListObjects(previous *ObjectListing) (*ObjectListing, error)
 	PutObject(bucket, key string, data *os.File, metadata *ObjectMetadata) error
 	PutObjectAt(bucket, key string, data *os.File, off, length int64, metadata *ObjectMetadata) error
-	PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string) error
+	PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string, etag string) error
 	GetObject(bucket, key string) (io.ReadCloser, error)
 	DoesObjectExist(bucket, key string) (bool, string, error)
 	GetObjectSummary(bucket, key string) (*ObjectSummary, error)
@@ -109,6 +108,7 @@ type StorageClient interface {
 
 	// Utility methods
 	Sign(req *http.Request) error
+	SetEndpoint(endpoint string)
 
 	// -----------------------
 	// High Level API
@@ -224,6 +224,15 @@ func NewDefaultHTTPClient(cli *DefaultStorageClient) HTTPClient {
 	return defaultCli
 }
 
+func (cli *DefaultStorageClient) SetEndpoint(region string) {
+	location, _ := cli.GetRegions()
+	for _, r := range location.Regions {
+		if r.Name == region {
+			cli.Config.Endpoint = r.Endpoint
+		}
+	}
+}
+
 // ListBuckets returns list of buckets (GET Service)
 func (cli *DefaultStorageClient) ListBuckets() (listing *BucketListing, err error) {
 	if cli.Config.AccessKeyID == "" {
@@ -272,7 +281,7 @@ func (cli *DefaultStorageClient) GetBucketLocation(bucket string) (bucketLocatio
 	return
 }
 
-func (cli *DefaultStorageClient) GetRegions() (regions *Regions, err error){
+func (cli *DefaultStorageClient) GetRegions() (regions *Regions, err error) {
 	if cli.env.Debug {
 		cli.Logger.Println("Storage REST API Call: GET Regions")
 	}
@@ -437,7 +446,7 @@ func (cli *DefaultStorageClient) DoesBucketExist(bucket string) (result bool, bu
 	defer resp.Body.Close()
 	sc := resp.StatusCode
 	if sc == 200 || sc == 404 {
-		return sc == 200, bucketLocation,nil
+		return sc == 200, bucketLocation, nil
 	}
 	cli.Logger.Printf("invalid response [status: %s]", resp.Status)
 	return false, bucketLocation, err
@@ -700,7 +709,7 @@ func (cli *DefaultStorageClient) PutObjectAt(bucket, key string, f *os.File, off
 	return nil
 }
 
-func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string) error {
+func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string, etag string) error {
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: PUT Object(copy) {source bucket: %q, source key: %q, dist bucket: %q, dist key: %q}", sourceBucket, sourceKey, distBucket, distKey)
 	}
@@ -726,9 +735,13 @@ func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBuck
 			cli.Logger.Printf("Failed to create a new HTTP request for put object(copy). reason: %v\n", err)
 			return nil, err
 		}
-		source := "/"+sourceBucket+"/"+sourceKey
+		source := "/" + sourceBucket + "/" + sourceKey
 		source = url.QueryEscape(source)
 		req.Header.Set("x-iijgio-copy-source", source)
+		if etag != "" {
+			etag = url.QueryEscape(etag)
+			req.Header.Set("x-iijgio-copy-source-if-none-match", etag)
+		}
 		return req, nil
 	}, nil)
 	cli.Config.Endpoint = defaultEndpoint
@@ -1073,7 +1086,7 @@ func (cli *DefaultStorageClient) ListMultipartUploads(bucket, prefix, keyMarker,
 
 // NextListMultipartUploads returns next page of multipart-uploads listing
 func (cli *DefaultStorageClient) NextListMultipartUploads(prev *MultipartUploadListing) (listing *MultipartUploadListing, err error) {
-	if ! prev.IsTruncated {
+	if !prev.IsTruncated {
 		return nil, errors.New("the listing is not truncated")
 	}
 	return cli.ListMultipartUploads(prev.Bucket, prev.Prefix, prev.NextKeyMarker, prev.NextUploadIdMarker, prev.Delimiter, prev.MaxUploads)
@@ -1203,7 +1216,7 @@ func (cli *DefaultStorageClient) ListParts(bucket, key, uploadId string, partNum
 
 // NextListParts returns next page of parts
 func (cli *DefaultStorageClient) NextListParts(prev *PartListing) (listing *PartListing, err error) {
-	if ! prev.IsTruncated {
+	if !prev.IsTruncated {
 		return nil, errors.New("the listing is not truncated")
 	}
 	return cli.ListParts(prev.Bucket, prev.Key, prev.UploadId, prev.NextPartNumberMarker, prev.MaxParts)
@@ -1809,7 +1822,7 @@ func getCanonicalHeaders(h http.Header) string {
 		}
 		canonicalHeaders = append(canonicalHeaders, fmt.Sprintf("%s:%s\n", _key, strings.Join(_values, ",")))
 	}
-	sort.Strings(canonicalHeaders)
+	sort.Sort(sort.Reverse(sort.StringSlice(canonicalHeaders)))
 	return strings.Join(canonicalHeaders, "")
 }
 

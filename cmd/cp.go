@@ -10,10 +10,10 @@ import (
 )
 
 type cpCommand struct {
-	env           *env.Environment
-	cli           client.StorageClient
-	opts		  *flag.FlagSet
-	recursive	  bool
+	env   *env.Environment
+	cli   client.StorageClient
+	opts  *flag.FlagSet
+	force bool
 }
 
 func (c *cpCommand) Description() string {
@@ -22,10 +22,8 @@ func (c *cpCommand) Description() string {
 
 func (c *cpCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  cp <bucket>:<key> <bucket>:
-  cp <bucket>:<key> <bucket>:<prefix>
-  cp -r <bucket>:<prefix>/ <bucket>:
-  cp -r <bucket>:<prefix>/ <bucket>:<prefix>/
+  cp [-f] [<bucket>]:[<key>] <bucket>:
+  cp [-f] [<bucket>]:[<key>] <bucket>:<prefix>
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -34,8 +32,8 @@ Options:
 func (c *cpCommand) Init(env *env.Environment) (err error) {
 	c.env = env
 	c.cli, _ = client.NewStorageClient(env)
-	opts := flag.NewFlagSet("cp",flag.ExitOnError)
-	opts.BoolVar(&c.recursive, "r", false, "recursively upload")
+	opts := flag.NewFlagSet("cp", flag.ExitOnError)
+	opts.BoolVar(&c.force, "f", false, "Ignore modifies")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}
@@ -47,8 +45,9 @@ func (c *cpCommand) Run(args []string) (err error) {
 	var (
 		sourceBucket = ""
 		sourceKey    = ""
-		distBucket	 = ""
-		distKey		 = ""
+		destBucket   = ""
+		destKey      = ""
+		etag         = ""
 	)
 	if len(args) == 0 {
 		return ErrArgument
@@ -61,111 +60,28 @@ func (c *cpCommand) Run(args []string) (err error) {
 	source := strings.Split(argv[0], ":")
 	sourceBucket = source[0]
 	sourceKey = source[1]
-	dist := strings.Split(argv[1], ":")
-	distBucket = dist[0]
-	distKey = dist[1]
-
-	if c.recursive == false {
-		// object -> bucket
-		if !strings.HasSuffix(sourceKey, "/") && sourceKey != "" && distKey == "" {
-			slice := strings.Split(sourceKey, "/")
-			err = c.cli.PutObjectCopy(sourceBucket,sourceKey,distBucket,slice[len(slice)-1])
-			if err != nil {
-				return
-			}
-			if c.env.Verbose {
-				fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, sourceKey, distBucket, slice[len(slice)-1])
-			}
-			return nil
-		}
-		// object -> dir
-		if !strings.HasSuffix(sourceKey, "/") && sourceKey != "" && distKey != "" {
-			slice := strings.Split(sourceKey, "/")
-			if !strings.HasSuffix(distKey, "/") {
-				distKey += "/"
-			}
-			targetKey := distKey + slice[len(slice)-1]
-			err = c.cli.PutObjectCopy(sourceBucket,sourceKey,distBucket,targetKey)
-			if err != nil {
-				return
-			}
-			if c.env.Verbose {
-				fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, sourceKey, distBucket, targetKey)
-			}
-			return nil
-		}
+	dest := strings.Split(argv[1], ":")
+	destBucket = dest[0]
+	destKey = dest[1]
+	if sourceBucket == "" || sourceKey == "" || destBucket == "" {
+		return ErrArgument
 	}
-
-	if c.recursive {
-		// dir -> bucket
-		if distKey == "" && sourceKey != "" {
-			if !strings.HasSuffix(sourceKey, "/") {
-				sourceKey += "/"
-			}
-			listing, err := c.cli.ListObjects(sourceBucket, sourceKey, "", "/", 1000)
-			if err != nil {
-				return err
-			}
-			for _, n := range listing.Summaries {
-				err = c.cli.PutObjectCopy(sourceBucket, n.Key, distBucket, n.Key)
-				if err != nil {
-					return err
-				}
-				if c.env.Verbose {
-					fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, n.Key, distBucket, n.Key)
-				}
-			}
-			return nil
+	if destKey == "" {
+		destKey = sourceKey
+	}
+	if c.env.Verbose {
+		fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, sourceKey, destBucket, destKey)
+	}
+	if c.force == false {
+		sourceMeta, err := c.cli.GetObjectMetadata(sourceBucket, sourceKey)
+		if err != nil {
+			return err
 		}
-
-		// dir -> dir
-		if distKey != "" {
-			if !strings.HasSuffix(sourceKey, "/") {
-				sourceKey += "/"
-			}
-			listing, err := c.cli.ListObjects(sourceBucket, sourceKey, "", "/", 1000)
-			if err != nil {
-				return err
-			}
-			if !strings.HasSuffix(distKey, "/") {
-				distKey += "/"
-			}
-			var targetKey string
-			var slice 	  []string
-			for _, n := range listing.Summaries {
-				slice = strings.Split(n.Key, "/")
-				targetKey = distKey + slice[len(slice)-2] + "/" + slice[len(slice)-1]
-				err = c.cli.PutObjectCopy(sourceBucket, n.Key, distBucket, targetKey)
-				if c.env.Verbose {
-					fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, n.Key, distBucket, targetKey)
-				}
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-
-		// bucket -> bucket
-		if distKey == "" && sourceKey == "" {
-			listing, err := c.cli.ListObjects(sourceBucket, "", "", "", 1000)
-			if err != nil {
-				return err
-			}
-			for _, n := range listing.Summaries {
-				err = c.cli.PutObjectCopy(sourceBucket, n.Key, distBucket, n.Key)
-				if c.env.Verbose {
-					fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, n.Key, distBucket, n.Key)
-			}
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-
-	} else {
-		return fmt.Errorf("%q:%q is a directory (not copy)", sourceBucket, sourceKey)
+		etag = sourceMeta.ETag
+	}
+	err = c.cli.PutObjectCopy(sourceBucket, sourceKey, destBucket, destKey, etag)
+	if err != nil {
+		return err
 	}
 	return
 }
