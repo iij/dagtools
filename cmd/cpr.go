@@ -42,49 +42,28 @@ func (c *cprCommand) Init(env *env.Environment) (err error) {
 
 func (c *cprCommand) Run(args []string) (err error) {
 	var (
-		sourceBucket = ""
-		//destBucket = ""
+	//sourceBucket = ""
+	//destBucket = ""
 	)
 	if len(args) == 0 {
 		return ErrArgument
 	}
 	c.opts.Parse(args)
 	argv := c.opts.Args()
-	if len(argv) != 2 {
+	if len(argv) < 2 {
 		return ErrArgument
 	}
-	sourceBucket = argv[0]
-	//destBucket = argv[1]
-	_, err = c.cli.ListObjects(sourceBucket, "", "", "", 1000)
-	if err != nil {
-		return err
+	// 標準出力に進捗を表示
+	if c.env.Verbose {
+
 	}
+	// sourceのバケットに含まれるオブジェクトをlisting
+	// forfceがtrueの場合はlisting分だけPutObjectCopyを実行する
 	return
 }
 
 func (c *cprCommand) execPutObjectCopy(listing *client.ObjectListing, destBucket string) (int, error) {
-	exist, _, err := c.cli.DoesBucketExist(destBucket)
 
-	if err != nil || exist == false {
-		return -1, err
-	}
-	if c.force {
-		for _, o := range listing.Summaries {
-			err = c.cli.PutObjectCopy(listing.Name, o.Key, destBucket, o.Key, "hoge")
-			if err != nil {
-				fmt.Printf("Fail to PUT object copy %s:%s\n", listing.Name, o.Key)
-			}
-		}
-	} else {
-		for _, o := range listing.Summaries {
-			exist, _, err = c.cli.DoesObjectExist(destBucket, o.Key)
-			if err != nil {
-				return -1, err
-			}
-			if exist == true {
-			}
-		}
-	}
 	return 0, nil
 }
 

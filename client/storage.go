@@ -87,7 +87,7 @@ type StorageClient interface {
 	NextListObjects(previous *ObjectListing) (*ObjectListing, error)
 	PutObject(bucket, key string, data *os.File, metadata *ObjectMetadata) error
 	PutObjectAt(bucket, key string, data *os.File, off, length int64, metadata *ObjectMetadata) error
-	PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string, etag string) error
+	PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string, metaData *ObjectSummary) error
 	GetObject(bucket, key string) (io.ReadCloser, error)
 	DoesObjectExist(bucket, key string) (bool, string, error)
 	GetObjectSummary(bucket, key string) (*ObjectSummary, error)
@@ -101,6 +101,7 @@ type StorageClient interface {
 	InitiateMultipartUpload(bucket, key string, metadata *ObjectMetadata) (*MultipartUpload, error)
 	AbortMultipartUpload(upload *MultipartUpload) error
 	CompleteMultipartUpload(upload *MultipartUpload, parts []*Part) (*CompleteMultipartUploadResult, error)
+	UploadPartCopy(upload *MultipartUpload, num int, sourceBucket, sourceKey string, rangeFirst, rangeLast int64) (part *Part, err error)
 	ListParts(bucket, key, uploadId string, partNumberMarker, maxParts int) (*PartListing, error)
 	NextListParts(previous *PartListing) (*PartListing, error)
 	UploadPart(upload *MultipartUpload, num int, data *os.File) (*Part, error)
@@ -709,11 +710,14 @@ func (cli *DefaultStorageClient) PutObjectAt(bucket, key string, f *os.File, off
 	return nil
 }
 
-func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string, etag string) error {
-	if cli.env.Debug {
-		cli.env.Logger.Printf("Storage REST API Call: PUT Object(copy) {source bucket: %q, source key: %q, dist bucket: %q, dist key: %q}", sourceBucket, sourceKey, distBucket, distKey)
+func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, destBucket, destKey string, metaData *ObjectSummary) error {
+	if metaData.Size > cli.Config.MultipartChunkSize {
+
 	}
-	bucketLocation, err := cli.GetBucketLocation(distBucket)
+	if cli.env.Debug {
+		cli.env.Logger.Printf("Storage REST API Call: PUT Object(copy) {source bucket: %q, source key: %q, dist bucket: %q, dist key: %q}", sourceBucket, sourceKey, destBucket, destKey)
+	}
+	bucketLocation, err := cli.GetBucketLocation(destBucket)
 	if err != nil {
 		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
 	}
@@ -728,7 +732,7 @@ func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBuck
 			cli.Config.Endpoint = r.Endpoint
 		}
 	}
-	target := cli.Config.buildURL(distBucket, distKey, nil)
+	target := cli.Config.buildURL(destBucket, destKey, nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("PUT", target, nil)
 		if err != nil {
@@ -738,8 +742,8 @@ func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBuck
 		source := "/" + sourceBucket + "/" + sourceKey
 		source = url.QueryEscape(source)
 		req.Header.Set("x-iijgio-copy-source", source)
-		if etag != "" {
-			etag = url.QueryEscape(etag)
+		if metaData != nil {
+			etag := url.QueryEscape(metaData.ETag)
 			req.Header.Set("x-iijgio-copy-source-if-none-match", etag)
 		}
 		return req, nil
@@ -1181,6 +1185,98 @@ func (cli *DefaultStorageClient) CompleteMultipartUpload(upload *MultipartUpload
 	if err != nil {
 		cli.Logger.Println("Failed to complete the multipart uploads.", err)
 		return
+	}
+	defer resp.Body.Close()
+	return
+}
+
+// PUT object Copy via multipart upload
+func (cli *DefaultStorageClient) MultiPartUploadCopy(sourceBucket, sourceKey, destBucket, destKey string, metaData *ObjectSummary) (err error) {
+	if cli.env.Debug {
+		cli.env.Logger.Printf("Storage REST API Call: Multipart Upload Copy {sourceObject: %s:%s, destObject: %s:%s}", sourceBucket, sourceKey, destBucket, destKey)
+	}
+	var (
+		num     = int(math.Ceil(float64(metaData.Size) / float64(cli.Config.MultipartChunkSize)))
+		parts   = make([]*Part, 1000)
+		wg      sync.WaitGroup
+		upload  *MultipartUpload
+		ok      = true
+		channel = make(chan bool)
+	)
+	defer func() {
+		if !ok {
+			if upload != nil && cli.Config.AbortOnFailure {
+				cli.AbortMultipartUpload(upload)
+			}
+			if err == nil {
+				err = errors.New("failed to object copy")
+			}
+		}
+	}()
+	upload, err = cli.InitiateMultipartUpload(destBucket, destKey, nil)
+	if err != nil {
+		return err
+	}
+	for i := 1; i <= num; i++ {
+		wg.Add(1)
+		go func(i int) {
+			<-channel
+			defer func() {
+				wg.Done()
+				channel <- true
+			}()
+			cli.Logger.Printf("Upload a part number %d\n", i)
+			rangeFirst := cli.Config.MultipartChunkSize * int64(i-1)
+			rangeLast := cli.Config.MultipartChunkSize * int64(i)
+			cli.Logger.Printf("Part range : %d - %d\n", rangeFirst, rangeLast)
+			part, err := cli.UploadPartCopy(upload, i, sourceBucket, sourceKey, rangeFirst, rangeLast)
+			if part == nil || err != nil {
+				ok = false
+				return
+			}
+			parts[i-1] = part
+			cli.Logger.Printf("Finished to upload Part(%s).", part)
+		}(i)
+	}
+	concurrency := cli.env.Concurrency
+	if concurrency > num {
+		concurrency = num
+	}
+	for i := 0; i < concurrency; i++ {
+		channel <- true
+	}
+	wg.Wait()
+	if ok {
+		if _, err = cli.CompleteMultipartUpload(upload, parts); err != nil {
+			ok = false
+		} else {
+			cli.Logger.Printf("Succeeded to upload %s:%s as %s:%s\n", sourceBucket, sourceKey, destBucket, destKey)
+		}
+	}
+	return
+}
+
+func (cli *DefaultStorageClient) UploadPartCopy(upload *MultipartUpload, num int, sourceBucket, sourceKey string, rangeFirst, rangeLast int64) (part *Part, err error) {
+	if cli.env.Debug {
+		cli.env.Logger.Printf("Storage REST API Call: Upload Part(copy) {upload: %v, num: %d}", upload, num)
+	}
+	target := cli.Config.buildURL(upload.Bucket, upload.Key, map[string]string{"partNumber": strconv.Itoa(num), "uploadId": upload.UploadID})
+	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
+		req, err := http.NewRequest("PUT", target, nil)
+		if err != nil {
+			cli.Logger.Printf("Failed to create a new HTTP request for put object(copy). reason: %v\n", err)
+			return nil, err
+		}
+		source := "/" + sourceBucket + "/" + sourceKey
+		source = url.QueryEscape(source)
+		req.Header.Set("x-iijgio-copy-source", source)
+		byteRange := "bytes=" + strconv.Itoa(int(rangeFirst)) + "-" + strconv.Itoa(int(rangeLast))
+		byteRange = url.QueryEscape(byteRange)
+		req.Header.Set("x-iijgio-copy-source", byteRange)
+		return req, nil
+	}, nil)
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 	return

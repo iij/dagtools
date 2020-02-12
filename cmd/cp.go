@@ -43,11 +43,11 @@ func (c *cpCommand) Init(env *env.Environment) (err error) {
 
 func (c *cpCommand) Run(args []string) (err error) {
 	var (
+		sourceMeta   *client.ObjectSummary
 		sourceBucket = ""
 		sourceKey    = ""
 		destBucket   = ""
 		destKey      = ""
-		etag         = ""
 	)
 	if len(args) == 0 {
 		return ErrArgument
@@ -73,13 +73,12 @@ func (c *cpCommand) Run(args []string) (err error) {
 		fmt.Fprintf(os.Stdout, "copy: %s:%s -> %s:%s\n", sourceBucket, sourceKey, destBucket, destKey)
 	}
 	if c.force == false {
-		sourceMeta, err := c.cli.GetObjectMetadata(sourceBucket, sourceKey)
+		sourceMeta, err = c.cli.GetObjectSummary(sourceBucket, sourceKey)
 		if err != nil {
 			return err
 		}
-		etag = sourceMeta.ETag
 	}
-	err = c.cli.PutObjectCopy(sourceBucket, sourceKey, destBucket, destKey, etag)
+	err = c.cli.PutObjectCopy(sourceBucket, sourceKey, destBucket, destKey, sourceMeta)
 	if err != nil {
 		return err
 	}
