@@ -110,6 +110,7 @@ type StorageClient interface {
 	// Utility methods
 	Sign(req *http.Request) error
 	SetEndpoint(endpoint string)
+	GetEndpoint() string
 
 	// -----------------------
 	// High Level API
@@ -225,13 +226,13 @@ func NewDefaultHTTPClient(cli *DefaultStorageClient) HTTPClient {
 	return defaultCli
 }
 
-func (cli *DefaultStorageClient) SetEndpoint(region string) {
-	location, _ := cli.GetRegions()
-	for _, r := range location.Regions {
-		if r.Name == region {
-			cli.Config.Endpoint = r.Endpoint
-		}
-	}
+// Set a endpoint address from receive region
+func (cli *DefaultStorageClient) SetEndpoint(endpoint string) {
+	cli.Config.Endpoint = endpoint
+}
+
+func (cli *DefaultStorageClient) GetEndpoint() string {
+	return cli.Config.Endpoint
 }
 
 // ListBuckets returns list of buckets (GET Service)
@@ -711,26 +712,11 @@ func (cli *DefaultStorageClient) PutObjectAt(bucket, key string, f *os.File, off
 }
 
 func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, destBucket, destKey string, metaData *ObjectSummary) error {
-	if metaData.Size > cli.Config.MultipartChunkSize {
-
+	if metaData != nil && (metaData.Size > cli.Config.MultipartChunkSize) {
+		return cli.MultiPartUploadCopy(sourceBucket, sourceKey, destBucket, destKey, metaData)
 	}
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: PUT Object(copy) {source bucket: %q, source key: %q, dist bucket: %q, dist key: %q}", sourceBucket, sourceKey, destBucket, destKey)
-	}
-	bucketLocation, err := cli.GetBucketLocation(destBucket)
-	if err != nil {
-		cli.Logger.Printf("Failed to get bucket location. reason: %v\n", err)
-	}
-	locations, err := cli.GetRegions()
-	if err != nil {
-		cli.Logger.Printf("Failed to execute Get Regions. reason: %v\n", err)
-		return err
-	}
-	defaultEndpoint := cli.Config.Endpoint
-	for _, r := range locations.Regions {
-		if r.Name == bucketLocation {
-			cli.Config.Endpoint = r.Endpoint
-		}
 	}
 	target := cli.Config.buildURL(destBucket, destKey, nil)
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
@@ -748,7 +734,6 @@ func (cli *DefaultStorageClient) PutObjectCopy(sourceBucket, sourceKey, destBuck
 		}
 		return req, nil
 	}, nil)
-	cli.Config.Endpoint = defaultEndpoint
 	if err != nil {
 		cli.Logger.Println("Failed to execute HTTP request.", err)
 		return err
@@ -1227,7 +1212,7 @@ func (cli *DefaultStorageClient) MultiPartUploadCopy(sourceBucket, sourceKey, de
 			}()
 			cli.Logger.Printf("Upload a part number %d\n", i)
 			rangeFirst := cli.Config.MultipartChunkSize * int64(i-1)
-			rangeLast := cli.Config.MultipartChunkSize * int64(i)
+			rangeLast := cli.Config.MultipartChunkSize*int64(i) - 1
 			cli.Logger.Printf("Part range : %d - %d\n", rangeFirst, rangeLast)
 			part, err := cli.UploadPartCopy(upload, i, sourceBucket, sourceKey, rangeFirst, rangeLast)
 			if part == nil || err != nil {
@@ -1260,6 +1245,7 @@ func (cli *DefaultStorageClient) UploadPartCopy(upload *MultipartUpload, num int
 	if cli.env.Debug {
 		cli.env.Logger.Printf("Storage REST API Call: Upload Part(copy) {upload: %v, num: %d}", upload, num)
 	}
+	var p Part
 	target := cli.Config.buildURL(upload.Bucket, upload.Key, map[string]string{"partNumber": strconv.Itoa(num), "uploadId": upload.UploadID})
 	resp, err := cli.DoAndRetry(func() (*http.Request, error) {
 		req, err := http.NewRequest("PUT", target, nil)
@@ -1269,16 +1255,19 @@ func (cli *DefaultStorageClient) UploadPartCopy(upload *MultipartUpload, num int
 		}
 		source := "/" + sourceBucket + "/" + sourceKey
 		source = url.QueryEscape(source)
-		req.Header.Set("x-iijgio-copy-source", source)
-		byteRange := "bytes=" + strconv.Itoa(int(rangeFirst)) + "-" + strconv.Itoa(int(rangeLast))
+		byteRange := fmt.Sprintf("%s-%s", strconv.Itoa(int(rangeFirst)), strconv.Itoa(int(rangeLast)))
 		byteRange = url.QueryEscape(byteRange)
-		req.Header.Set("x-iijgio-copy-source", byteRange)
+		req.Header.Set("x-iijgio-copy-source", source)
+		req.Header.Set("x-iijgio-copy-source-range", fmt.Sprintf("bytes=%s", byteRange))
 		return req, nil
-	}, nil)
+	}, &p)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	//part.ETag = resp.Header.Get("ETag")
+	p.PartNumber = num
+	part = &p
 	return
 }
 

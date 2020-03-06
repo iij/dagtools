@@ -5,11 +5,11 @@
 package client
 
 import (
+	gomock "github.com/golang/mock/gomock"
 	io "io"
 	http "net/http"
 	os "os"
 	reflect "reflect"
-	gomock "github.com/golang/mock/gomock"
 )
 
 // MockStorageClient is a mock of StorageClient interface
@@ -124,21 +124,6 @@ func (mr *MockStorageClientMockRecorder) SelectRegionPutBucket(bucket, region in
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectRegionPutBucket", reflect.TypeOf((*MockStorageClient)(nil).SelectRegionPutBucket), bucket, region)
 }
 
-// GetBucketLocation mocks base method
-func (m *MockStorageClient) GetBucketLocation(bucket string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBucketLocation", bucket)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetBucketLocation indicates an expected call of GetBucketLocation
-func (mr *MockStorageClientMockRecorder) GetBucketLocation(bucket interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBucketLocation", reflect.TypeOf((*MockStorageClient)(nil).GetBucketLocation), bucket)
-}
-
 // PutBucket mocks base method
 func (m *MockStorageClient) PutBucket(bucket string) error {
 	m.ctrl.T.Helper()
@@ -165,6 +150,21 @@ func (m *MockStorageClient) DeleteBucket(bucket string) error {
 func (mr *MockStorageClientMockRecorder) DeleteBucket(bucket interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBucket", reflect.TypeOf((*MockStorageClient)(nil).DeleteBucket), bucket)
+}
+
+// GetBucketLocation mocks base method
+func (m *MockStorageClient) GetBucketLocation(bucket string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBucketLocation", bucket)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBucketLocation indicates an expected call of GetBucketLocation
+func (mr *MockStorageClientMockRecorder) GetBucketLocation(bucket interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBucketLocation", reflect.TypeOf((*MockStorageClient)(nil).GetBucketLocation), bucket)
 }
 
 // DoesBucketExist mocks base method
@@ -285,17 +285,17 @@ func (mr *MockStorageClientMockRecorder) PutObjectAt(bucket, key, data, off, len
 }
 
 // PutObjectCopy mocks base method
-func (m *MockStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string) error {
+func (m *MockStorageClient) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey string, metaData *ObjectSummary) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PutObjectCopy", sourceBucket, sourceKey, distBucket, distKey)
+	ret := m.ctrl.Call(m, "PutObjectCopy", sourceBucket, sourceKey, distBucket, distKey, metaData)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // PutObjectCopy indicates an expected call of PutObjectCopy
-func (mr *MockStorageClientMockRecorder) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey interface{}) *gomock.Call {
+func (mr *MockStorageClientMockRecorder) PutObjectCopy(sourceBucket, sourceKey, distBucket, distKey, metaData interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutObjectCopy", reflect.TypeOf((*MockStorageClient)(nil).PutObjectCopy), sourceBucket, sourceKey, distBucket, distKey)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutObjectCopy", reflect.TypeOf((*MockStorageClient)(nil).PutObjectCopy), sourceBucket, sourceKey, distBucket, distKey, metaData)
 }
 
 // GetObject mocks base method
@@ -462,6 +462,21 @@ func (mr *MockStorageClientMockRecorder) CompleteMultipartUpload(upload, parts i
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteMultipartUpload", reflect.TypeOf((*MockStorageClient)(nil).CompleteMultipartUpload), upload, parts)
 }
 
+// UploadPartCopy mocks base method
+func (m *MockStorageClient) UploadPartCopy(upload *MultipartUpload, num int, sourceBucket, sourceKey string, rangeFirst, rangeLast int64) (*Part, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UploadPartCopy", upload, num, sourceBucket, sourceKey, rangeFirst, rangeLast)
+	ret0, _ := ret[0].(*Part)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UploadPartCopy indicates an expected call of UploadPartCopy
+func (mr *MockStorageClientMockRecorder) UploadPartCopy(upload, num, sourceBucket, sourceKey, rangeFirst, rangeLast interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UploadPartCopy", reflect.TypeOf((*MockStorageClient)(nil).UploadPartCopy), upload, num, sourceBucket, sourceKey, rangeFirst, rangeLast)
+}
+
 // ListParts mocks base method
 func (m *MockStorageClient) ListParts(bucket, key, uploadId string, partNumberMarker, maxParts int) (*PartListing, error) {
 	m.ctrl.T.Helper()
@@ -534,6 +549,32 @@ func (m *MockStorageClient) Sign(req *http.Request) error {
 func (mr *MockStorageClientMockRecorder) Sign(req interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sign", reflect.TypeOf((*MockStorageClient)(nil).Sign), req)
+}
+
+// SetEndpoint mocks base method
+func (m *MockStorageClient) SetEndpoint(endpoint string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetEndpoint", endpoint)
+}
+
+// SetEndpoint indicates an expected call of SetEndpoint
+func (mr *MockStorageClientMockRecorder) SetEndpoint(endpoint interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEndpoint", reflect.TypeOf((*MockStorageClient)(nil).SetEndpoint), endpoint)
+}
+
+// GetEndpoint mocks base method
+func (m *MockStorageClient) GetEndpoint() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEndpoint")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetEndpoint indicates an expected call of GetEndpoint
+func (mr *MockStorageClientMockRecorder) GetEndpoint() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEndpoint", reflect.TypeOf((*MockStorageClient)(nil).GetEndpoint))
 }
 
 // Upload mocks base method
