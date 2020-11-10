@@ -16,6 +16,8 @@ type trafficCommand struct {
 	opts          *flag.FlagSet
 	humanReadable bool
 	backwardTo    int
+	total 		  bool
+	region		  string
 }
 
 func (c *trafficCommand) Description() string {
@@ -24,7 +26,7 @@ func (c *trafficCommand) Description() string {
 
 func (c *trafficCommand) Usage() string {
 	return fmt.Sprintf(`Command Usage:
-  traffic [-h] [-b=N] [yyyyMMdd]
+  traffic [-h] [-t] [-region=ap1(or ap2)] [-b=N] [yyyyMMdd]
 
 Options:
 %s`, OptionUsage(c.opts))
@@ -36,6 +38,8 @@ func (c *trafficCommand) Init(env *env.Environment) (err error) {
 	opts := flag.NewFlagSet("traffic", flag.ExitOnError)
 	opts.IntVar(&c.backwardTo, "b", -1, "dating back to the number of specified month")
 	opts.BoolVar(&c.humanReadable, "h", false, "Human-readable output. Use unit suffix(B, KB, MB...) for sizes")
+	opts.BoolVar(&c.total, "t", false, "Total traffic of all regions.")
+	opts.StringVar(&c.region,"region", "", "Identifier of region")
 	opts.Usage = func() {
 		fmt.Fprintln(os.Stdout, c.Usage())
 	}
@@ -46,24 +50,78 @@ func (c *trafficCommand) Init(env *env.Environment) (err error) {
 func (c *trafficCommand) Run(args []string) (err error) {
 	c.opts.Parse(args)
 	argv := c.opts.Args()
-	if len(argv) == 1 && argv[0] != "" {
-		traffic, err := c.cli.GetNetworkTraffic(argv[0])
-		if err == nil {
-			c.printHeader()
-			c.printTraffic(traffic)
-		}
-		return err
+	if c.total && c.region != "" {
+		return ErrArgument
 	}
-	if c.backwardTo >= 0 {
-		result, err := c.cli.ListNetworkTraffics(c.backwardTo)
-		if err == nil {
-			c.printHeader()
-			traffics := result.DownTraffics
-			for i := range traffics {
-				c.printTraffic(traffics[i])
-			}
+	if c.total && c.region == "" {
+		region, err := c.cli.GetRegions()
+		if err != nil {
+			return err
 		}
-		return err
+		if len(argv) == 1 && argv[0] != "" {
+			var totalTraffic client.DownTraffic
+			totalTraffic.ChargeDate = argv[0]
+				for _, r := range region.Regions {
+					traffic, err := c.cli.GetNetworkTraffic(argv[0], r.Name)
+					if err != nil {
+						return err
+					}
+				totalTraffic.Amount += traffic.Amount
+			}
+			if err == nil {
+				c.printHeader()
+				c.printTraffic(&totalTraffic)
+			}
+			return err
+		}
+		if c.backwardTo >= 0 {
+			var totalResult []client.DownTraffic
+			var result		 *client.ListTrafficResult
+			for i, r := range region.Regions {
+				result, err = c.cli.ListNetworkTraffics(c.backwardTo, r.Name)
+				if err != nil {
+					return err
+				}
+				// にるぽ対策だけど常套手段がありそう
+				if i == 0 {
+					for i := range result.DownTraffics {
+						totalResult = append(totalResult, *result.DownTraffics[i])
+						totalResult[i].Amount = 0
+					}
+				}
+				for i := range result.DownTraffics {
+					totalResult[i].Amount += result.DownTraffics[i].Amount
+				}
+			}
+			if err == nil {
+				c.printHeader()
+				traffics := totalResult
+				for i := range traffics {
+					c.printTraffic(&traffics[i])
+				}
+			}
+			return err
+		}
+	} else {
+		if len(argv) == 1 && argv[0] != "" {
+			traffic, err := c.cli.GetNetworkTraffic(argv[0], c.region)
+			if err == nil {
+				c.printHeader()
+				c.printTraffic(traffic)
+			}
+			return err
+		}
+		if c.backwardTo >= 0 {
+			result, err := c.cli.ListNetworkTraffics(c.backwardTo, c.region)
+			if err == nil {
+				c.printHeader()
+				traffics := result.DownTraffics
+				for i := range traffics {
+					c.printTraffic(traffics[i])
+				}
+			}
+			return err
+		}
 	}
 	return ErrArgument
 }

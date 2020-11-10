@@ -8,6 +8,7 @@ APP_PACKAGE ?= github.com/iij/dagtools
 
 # amd64, 386
 ARCH_TYPE ?= amd64
+# ARCH_TYPE ?= 386
 
 BUILD_DIR ?= build
 BUILD_BIN_DIR := $(BUILD_DIR)/$(OS_TYPE)_$(ARCH_TYPE)
@@ -27,6 +28,7 @@ endif
 
 # windows, linux, darwin, freebsd, netbsd, dragonfly solaris, plan9
 OS_TYPE ?= $(LOCAL_OS_TYPE)
+# OS_TYPE ?= windows
 
 BUILD_FILE_NAME := $(APP_NAME)
 BUILD_BIN := $(BUILD_BIN_DIR)/$(APP_NAME)

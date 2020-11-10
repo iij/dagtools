@@ -1,6 +1,0 @@
-package: github.com/iij/dagtools
-import:
-- package: github.com/golang/mock
-  version: ^1.0.0
-  subpackages:
-  - gomock

@@ -109,12 +109,12 @@ func (c *lsCommand) listBuckets() (err error) {
 
 func (c *lsCommand) printBuckets(listing *client.BucketListing) {
 	owner := listing.Owner.String()
-	fmt.Fprintf(os.Stdout, "%20s  %20s   %s\n", "owner", "created", "name")
 	if len(owner) > 20 {
 		owner = owner[0:20]
 	}
+	fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\n", "owner", "created", "name")
 	for _, b := range listing.Buckets {
-		fmt.Fprintf(os.Stdout, "%20s  %20s   %s\n", owner, LocalTimeString(b.CreationDate), b.Name)
+		fmt.Fprintf(os.Stdout, "%20s\t%20s\t%s\n", owner, LocalTimeString(b.CreationDate), b.Name)
 	}
 }
 
@@ -143,7 +143,7 @@ func (c *lsCommand) listObjects(bucket string, prefix string, head bool) (num in
 	var listing *client.ObjectListing
 	_prefix := prefix
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		exists, err := c.cli.DoesObjectExist(bucket, prefix)
+		exists, _, err := c.cli.DoesObjectExist(bucket, prefix)
 		if err != nil {
 			return -1, err
 		}
@@ -282,7 +282,7 @@ func (c *lsCommand) printObjectsTSV(listing *client.ObjectListing, head bool) (n
 			if c.includeETag {
 				fmt.Fprintf(os.Stdout, "\t%s", "-")
 			}
-			fmt.Fprintf(os.Stdout, "\t%s\t%s\n", listing.Name, p.Prefix)
+			fmt.Fprintf(os.Stdout, "\t%s\t%s\t%s\n", listing.Name, listing.Location,  p.Prefix)
 			head = false
 			num += 1
 		}
@@ -299,7 +299,7 @@ func (c *lsCommand) printObjectsTSV(listing *client.ObjectListing, head bool) (n
 			if c.includeETag {
 				fmt.Fprintf(os.Stdout, "\t%s", s.ETag)
 			}
-			fmt.Fprintf(os.Stdout, "\t%s\t%s\n", listing.Name, s.Key)
+			fmt.Fprintf(os.Stdout, "\t%s\t%s\t%s\n", listing.Name, listing.Location,  s.Key)
 			head = false
 			num += 1
 		}

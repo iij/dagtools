@@ -70,7 +70,7 @@ func (e *Environment) Init() (err error) {
 	}
 	e.Logger = logger
 	e.Concurrency = e.Config.GetInt("dagtools", "concurrency", 1)
-	runtime.GOMAXPROCS(e.Concurrency)
+	runtime.GOMAXPROCS(	e.Concurrency)
 
 	if e.Debug {
 		logger.Println("Environment:", e.String())

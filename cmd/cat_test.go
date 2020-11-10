@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/iij/dagtools/client"
 	"github.com/iij/dagtools/env"
 	"github.com/iij/dagtools/ini"
-	"github.com/golang/mock/gomock"
 )
 
 func TestCatUsage(t *testing.T) {

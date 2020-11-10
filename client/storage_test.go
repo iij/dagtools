@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/iij/dagtools/env"
 	"github.com/iij/dagtools/ini"
-	"github.com/golang/mock/gomock"
 )
 
 func newMockEnvironment() env.Environment {
@@ -59,6 +59,33 @@ type mockHTTPCli struct {
 
 func (mock *mockHTTPCli) newMockHTTPClient(cli *DefaultStorageClient) HTTPClient {
 	return mock.mock
+}
+
+func newGetRegionsResp() (resp *http.Response) {
+	resp = &http.Response{
+		Body: NewBodyWithString(`<?xml version="1.0" encoding="UTF-8"?>
+<ListRegionsResult>
+ <RegionInfo>
+     <Region>ap2</Region>
+     <Alias>JP-EAST1</Alias>
+     <Endpoint>ap2.dag.iijgio.com</Endpoint>
+ </RegionInfo>
+ <RegionInfo>
+     <Region>ap1</Region>
+     <Alias>JP-WEST1</Alias>
+     <Endpoint>ap1.dag.iijgio.com</Endpoint>
+ </RegionInfo>
+</ListRegionsResult>`),
+	}
+	return
+}
+
+func newGetBucketLocationResp() (resp *http.Response) {
+	resp = &http.Response{
+		Body: NewBodyWithString(`<?xml version="1.0" encoding="UTF-8"?>
+<LocationConstraint>ap1</LocationConstraint>`),
+	}
+	return
 }
 
 func assertEquals(t *testing.T, msg string, actual, expected interface{}) {
@@ -247,8 +274,11 @@ func TestListBucketsApi(t *testing.T) {
   </Buckets>
 </ListAllMyBucketsResult>`),
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
-
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+	)
 	listing, err := client.ListBuckets()
 	assertEquals(t, "Should return nil at normal end.", err, nil)
 	buckets := listing.Buckets
@@ -256,10 +286,50 @@ func TestListBucketsApi(t *testing.T) {
 	bucket1 := buckets[0]
 	assertEquals(t, "Should return name of first bucket.", bucket1.Name, "quotes")
 	assertEquals(t, "Should return creationDate of first bucket", bucket1.CreationDate, time.Date(2006, time.February, 3, 16, 45, 9, 0, time.UTC))
+	assertEquals(t, "Should return ap1 of first bucket", bucket1.Location, "ap1")
 
 	bucket2 := buckets[1]
 	assertEquals(t, "Should return name of second bucket.", bucket2.Name, "samples")
 	assertEquals(t, "Should return creationDate of second bucket", bucket2.CreationDate, time.Date(2006, time.February, 3, 16, 41, 58, 0, time.UTC))
+	assertEquals(t, "Should return ap1 of second bucket", bucket2.Location, "ap1")
+}
+
+func TestGetBucketLocationApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil)
+
+	resp, err := client.GetBucketLocation("mybucket")
+	assertEquals(t, "Should return nil at normal end.", err, nil)
+	assertEquals(t, "Should return ap1 at normal end.", resp, "ap1")
+}
+
+func TestGetRegionsApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil)
+
+	resp, err := client.GetRegions()
+	assertEquals(t, "Should return nil at normal end.", err, nil)
+	region1 := resp.Regions[0]
+	assertEquals(t, "Should return name of first region.", region1.Name, "ap2")
+	assertEquals(t, "Should return endpoint of first region.", region1.Endpoint, "ap2.dag.iijgio.com")
+	region2 := resp.Regions[1]
+	assertEquals(t, "Should return name of second region.", region2.Name, "ap1")
+	assertEquals(t, "Should return endpoint of second region.", region2.Endpoint, "ap1.dag.iijgio.com")
+}
+
+func TestSelectRegionPutBucketApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body:       NewEmptyBody(),
+		StatusCode: 200,
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
+	err := client.SelectRegionPutBucket("mybucket", "ap1")
+	assertEquals(t, "Should return nil at normal end.", err, nil)
 }
 
 func TestPutBucketApi(t *testing.T) {
@@ -279,7 +349,11 @@ func TestDeleteBucketApi(t *testing.T) {
 	mockresp := &http.Response{
 		Body: NewEmptyBody(),
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	err := client.DeleteBucket("mybucket")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -291,10 +365,14 @@ func TestDoesBucketExistApi(t *testing.T) {
 		Body:       NewEmptyBody(),
 		StatusCode: 200,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
-
-	resp, err := client.DoesBucketExist("mybucket")
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+	resp, location, err := client.DoesBucketExist("mybucket")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
+	assertEquals(t, "hello", location, "ap1")
 	assertEquals(t, "Should return true response at normal end.", resp, true)
 }
 
@@ -304,7 +382,11 @@ func TestGetBucketPolicyApi(t *testing.T) {
 		Body:       NewBodyWithString("dummy"),
 		StatusCode: 200,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	policy, _ := client.GetBucketPolicy("mybucket")
 	raw, _ := ioutil.ReadAll(policy)
@@ -318,7 +400,11 @@ func TestPutBucketPolicyApi(t *testing.T) {
 		Body:       NewEmptyBody(),
 		StatusCode: 204,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	err := client.PutBucketPolicy("mybucket", nil)
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -327,10 +413,14 @@ func TestPutBucketPolicyApi(t *testing.T) {
 func TestDeleteBucketPolicyApi(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{
-		Body: NewEmptyBody(),
+		Body:       NewEmptyBody(),
+		StatusCode: 204,
 	}
-	mockresp.StatusCode = 204
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	err := client.DeleteBucketPolicy("mybucket")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -370,7 +460,11 @@ func TestListObjectsApi(t *testing.T) {
   </Contents>
 </ListBucketResult>`),
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	_, err := client.ListObjects("mybucket", "", "", "", 1)
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -379,10 +473,14 @@ func TestListObjectsApi(t *testing.T) {
 func TestPutObjectAtApi(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{
-		Body: NewEmptyBody(),
+		Body:       NewEmptyBody(),
+		StatusCode: 200,
 	}
-	mockresp.StatusCode = 200
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	f, openerr := os.OpenFile("test_file/test.txt", 0, 0644)
 	assertEquals(t, "Can not Open test File.", openerr, nil)
@@ -393,13 +491,33 @@ func TestPutObjectAtApi(t *testing.T) {
 	assertEquals(t, "Should return nil at normal end.", err, nil)
 }
 
+func TestPutObjectCopyApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body:       NewEmptyBody(),
+		StatusCode: 200,
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
+	err := client.PutObjectCopy("mybucket", "", "forMybucket", "", nil)
+	assertEquals(t, "Should return nil at normal end.", err, nil)
+}
+
 func TestGetObjectApi(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{
 		Body:       NewBodyWithString("dummy"),
 		StatusCode: 200,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	resp, err := client.GetObject("mybucket", "")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -411,13 +529,18 @@ func TestGetObjectApi(t *testing.T) {
 func TestDoesObjectExistApi(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{
-		Body: NewEmptyBody(),
+		Body:       NewEmptyBody(),
+		StatusCode: 200,
 	}
-	mockresp.StatusCode = 200
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
-	resp, err := client.DoesObjectExist("mybucket", "")
+	resp, location, err := client.DoesObjectExist("mybucket", "")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
+	assertEquals(t, "Should return ap1 at normal end.", location, "ap1")
 	assertEquals(t, "Should return true response at normal end.", resp, true)
 }
 
@@ -442,7 +565,11 @@ func TestGetObjectMetadataApi(t *testing.T) {
 	}
 	mockresp.StatusCode = 200
 	mockresp.ContentLength = 1
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	object, err := client.GetObjectMetadata("mybucket", "")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -457,7 +584,11 @@ func TestDeleteObjectApi(t *testing.T) {
 	mockresp := &http.Response{
 		Body: NewEmptyBody(),
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	err := client.DeleteObject("mybucket", "")
 	assertEquals(t, "Should return nil at normal end.", err, nil)
@@ -478,7 +609,11 @@ func TestDeleteMultipleObjectsApi(t *testing.T) {
   </Error>
 </DeleteResult>`),
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	keys := []string{"foo", "bar"}
 	_, err := client.DeleteMultipleObjects("mybucket", keys, true)
@@ -504,10 +639,14 @@ func TestInitiateMultipartUploadApi(t *testing.T) {
 func TestAbortMultipartUploadApi(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{
-		Body: NewEmptyBody(),
+		Body:       NewEmptyBody(),
+		StatusCode: 204,
 	}
-	mockresp.StatusCode = 204
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	upload := &MultipartUpload{}
 	err := client.AbortMultipartUpload(upload)
@@ -549,12 +688,107 @@ func TestUploadPartAtApi(t *testing.T) {
 	assertEquals(t, "Should return PartNumber 1 at normal end.", part.PartNumber, 1)
 }
 
+func TestGetStorageSpaceApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body: NewBodyWithString(`<StorageSpaceInfo>
+  <ContractUsed>10</ContractUsed>
+  <AccountUsed>20</AccountUsed>
+</StorageSpaceInfo>`),
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
+	resp, err := client.GetStorageSpace("ap1")
+	assertEquals(t, "Should return 10 at normal end.", int(resp.ContractUsed), 10)
+	assertEquals(t, "Should return 20 at normal end.", int(resp.AccountUsed), 20)
+	assertEquals(t, "Should return nil at normal end.", err, nil)
+}
+
+func TestListNetworkTrafficsApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body: NewBodyWithString(`<ListTrafficResult>
+  <DownTraffics>
+    <ChargeDate>20190912</ChargeDate>
+    <Amount>100</Amount>
+  </DownTraffics>
+  <DownTraffics>
+    <ChargeDate>20190913</ChargeDate>
+    <Amount>200</Amount>
+  </DownTraffics>
+</ListTrafficResult>`),
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
+	resp, err := client.ListNetworkTraffics(1, "ap1")
+	assertEquals(t, "Should return 20190912 at normal end.", resp.DownTraffics[0].ChargeDate, "20190912")
+	assertEquals(t, "Should return 100 at normal end.", int(resp.DownTraffics[0].Amount), 100)
+	assertEquals(t, "Should return 20190913 at normal end.", resp.DownTraffics[1].ChargeDate, "20190913")
+	assertEquals(t, "Should return 200 at normal end.", int(resp.DownTraffics[1].Amount), 200)
+	assertEquals(t, "Should return nil at normal end.", err, nil)
+}
+
+func TestGetNetworkTrafficApi(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body: NewBodyWithString(`<ListTrafficResult>
+  <DownTraffics>
+    <ChargeDate>20190914</ChargeDate>
+    <Amount>300</Amount>
+  </DownTraffics>
+</ListTrafficResult>`),
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
+	resp, err := client.GetNetworkTraffic("20190914", "ap1")
+	assertEquals(t, "Should return 20190914 at normal end.", resp.ChargeDate, "20190914")
+	assertEquals(t, "Should return 300 at normal end.", int(resp.Amount), 300)
+	assertEquals(t, "Should return nil at normal end.", err, nil)
+}
+
 func TestListBucketsApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
-	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+	)
 
 	_, err := client.ListBuckets()
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
+}
+
+func TestGetBucketLocationApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+
+	_, err := client.GetBucketLocation("bucket")
+	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
+}
+
+func TestGetRegionsApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+
+	_, err := client.GetRegions()
+	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
+}
+
+func TestSelectRegionPutBucketApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+
+	err := client.SelectRegionPutBucket("bucket", "ap1")
+	assertEquals(t, "Pass through HTTP error check", err.Error(), "dummy")
 }
 
 func TestPutBucketApiHTTPErr(t *testing.T) {
@@ -567,7 +801,11 @@ func TestPutBucketApiHTTPErr(t *testing.T) {
 
 func TestDeleteBucketApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
-	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+	)
 
 	err := client.DeleteBucket("mybucket")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -575,15 +813,23 @@ func TestDeleteBucketApiHTTPErr(t *testing.T) {
 
 func TestDoesBucketExistApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
-	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+	)
 
-	resp, _ := client.DoesBucketExist("mybucket")
+	resp, _, _ := client.DoesBucketExist("mybucket")
 	assertEquals(t, "Pass through HTTP error check.", resp, false)
 }
 
 func TestGetBucketPolicyApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
-	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+	)
 
 	_, err := client.GetBucketPolicy("mybucket")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -591,7 +837,11 @@ func TestGetBucketPolicyApiHTTPErr(t *testing.T) {
 
 func TestPutBucketPolicyApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
-	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+	)
 
 	err := client.PutBucketPolicy("mybucket", nil)
 	assertEquals(t, "Pass through HTTP error check..", err.Error(), "dummy")
@@ -599,7 +849,11 @@ func TestPutBucketPolicyApiHTTPErr(t *testing.T) {
 
 func TestDeleteBucketPolicyApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
-	mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+	)
 
 	err := client.DeleteBucketPolicy("mybucket")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -612,7 +866,11 @@ func TestListObjectsApiHTTPErr(t *testing.T) {
 		StatusCode:    500,
 		ContentLength: 0,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	_, err := client.ListObjects("mybucket", "", "", "", 1)
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -625,7 +883,11 @@ func TestPutObjectAtApiHTTPErr(t *testing.T) {
 		StatusCode:    500,
 		ContentLength: 0,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	f, openerr := os.OpenFile("test_file/test.txt", 0, 0644)
 	assertEquals(t, "Can not Open test File.", openerr, nil)
@@ -636,10 +898,26 @@ func TestPutObjectAtApiHTTPErr(t *testing.T) {
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
 }
 
+func TestPutObjectCopyApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dummy")),
+	)
+
+	err := client.PutObjectCopy("mybucket", "mykey", "forbucket", "forkey", nil)
+	assertEquals(t, "Path through HTTP error check", err.Error(), "dummy")
+}
+
 func TestGetObjectApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	_, err := client.GetObject("mybucket", "")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -648,9 +926,13 @@ func TestGetObjectApiHTTPErr(t *testing.T) {
 func TestDoesObjectExistApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
-	resp, err := client.DoesObjectExist("mybucket", "")
+	resp, _, err := client.DoesObjectExist("mybucket", "")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
 	assertEquals(t, "Pass through HTTP error check.", resp, false)
 }
@@ -672,7 +954,11 @@ func TestGetObjectSummaryApiHTTPErr(t *testing.T) {
 func TestGetObjectMetadataApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	_, err := client.GetObjectMetadata("mybucket", "")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -682,7 +968,11 @@ func TestGetObjectMetadataApiHTTPNotFoundErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 404
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	var foo *Object
 	object, err := client.GetObjectMetadata("mybucket", "")
@@ -693,7 +983,11 @@ func TestGetObjectMetadataApiHTTPNotFoundErr(t *testing.T) {
 func TestDeleteObjectApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	err := client.DeleteObject("mybucket", "")
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
@@ -706,7 +1000,11 @@ func TestDeleteMultipleObjectsApiHTTPErr(t *testing.T) {
 		StatusCode:    500,
 		ContentLength: 0,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	keys := []string{"foo", "bar"}
 	_, err := client.DeleteMultipleObjects("mybucket", keys, true)
@@ -729,7 +1027,11 @@ func TestInitiateMultipartUploadApiHTTPErr(t *testing.T) {
 func TestAbortMultipartUploadApiHTTPErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
 	upload := &MultipartUpload{}
 	err := client.AbortMultipartUpload(upload)
@@ -776,6 +1078,54 @@ func TestUploadPartAtApiHTTPErr(t *testing.T) {
 	assertEquals(t, "Pass through HTTP error check.", err.Error(), "dummy")
 }
 
+func TestGetStorageSpaceApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body:          NewEmptyBody(),
+		StatusCode:    500,
+		ContentLength: 0,
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
+
+	_, err := client.GetStorageSpace("ap1")
+	assertEquals(t, "Path through HTTP error check.", err.Error(), "dummy")
+}
+
+func TestListNetworkTrafficsApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body:          NewEmptyBody(),
+		StatusCode:    500,
+		ContentLength: 0,
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
+
+	_, err := client.ListNetworkTraffics(1, "ap1")
+	assertEquals(t, "Path through HTTP error check.", err.Error(), "dummy")
+}
+
+func TestGetNetworkTrafficApiHTTPErr(t *testing.T) {
+	client, mock := newHTTPClientMock(t)
+	mockresp := &http.Response{
+		Body:          NewEmptyBody(),
+		StatusCode:    500,
+		ContentLength: 0,
+	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
+
+	_, err := client.GetNetworkTraffic("20190909", "ap1")
+	assertEquals(t, "Path through HTTP error check.", err.Error(), "dummy")
+}
+
 func TestListBucketsApiErrWithoutID(t *testing.T) {
 	e := newAnonymousMockEnvironment()
 	_client, _ := NewStorageClient(&e)
@@ -804,9 +1154,15 @@ func TestDoesBucketExistApiNotFoundErr(t *testing.T) {
 		Body:       NewEmptyBody(),
 		StatusCode: 404,
 	}
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
 	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
 
-	resp, err := client.DoesBucketExist("mybucket")
+	resp, _, err := client.DoesBucketExist("mybucket")
 	assertEquals(t, "Pass through 404 error check.", resp, false)
 	assertEquals(t, "Pass through HTTP error check.", err, nil)
 }
@@ -815,9 +1171,13 @@ func TestDoesBucketExistApiStatusCodeErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 300
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
-	resp, _ := client.DoesBucketExist("mybucket")
+	resp, _, _ := client.DoesBucketExist("mybucket")
 	assertEquals(t, "Should return nil at normal end.", resp, false)
 }
 
@@ -825,7 +1185,11 @@ func TestGetBucketPolicyApiNotFoundErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 404
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	resp, _ := client.GetBucketPolicy("mybucket")
 	assertEquals(t, "Should return nil at no policy.", resp, nil)
@@ -835,7 +1199,11 @@ func TestGetBucketPolicyApiStatusCodeErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 299
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	resp, err := client.GetBucketPolicy("mybucket")
 	assertEquals(t, "Pass through HTTP StatusCode check.", err.Error(), "invalid response")
@@ -846,7 +1214,11 @@ func TestPutBucketPolicyApiStatusCodeErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 200
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	err := client.PutBucketPolicy("mybucket", nil)
 	assertEquals(t, "Policy is not include in Response Body.", err.Error(), "invalid response")
@@ -856,7 +1228,11 @@ func TestDeleteBucketPolicyApiStatusCodeErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 299
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	err := client.DeleteBucketPolicy("mybucket")
 	assertEquals(t, "Pass through HTTP StatusCode check.", err.Error(), "invalid response")
@@ -865,9 +1241,14 @@ func TestDeleteBucketPolicyApiStatusCodeErr(t *testing.T) {
 func TestListObjectsApiURLParseErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
+
 	_, err := client.ListObjects("%mybucket", "", "", "", 1)
-	assertEquals(t, "Pass through URL Parse error check.", err.Error(), "parse https://storage-dag.iijgio.com/%mybucket?max-keys=1: invalid URL escape \"%my\"")
+	assertEquals(t, "Pass through URL Parse error check.", err.Error(), "parse https://storage-dag.iijgio.com/%mybucket?location: invalid URL escape \"%my\"")
 }
 
 func TestPutObjectApiErr(t *testing.T) {
@@ -886,7 +1267,11 @@ func TestPutObjectAtApiStatusCodeErr(t *testing.T) {
 		StatusCode:    299,
 		ContentLength: 0,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	f, err := os.OpenFile("test_file/test.txt", 0, 0644)
 	assertEquals(t, "Can not Open test File.", err, nil)
@@ -904,7 +1289,11 @@ func TestGetObjectApiStatusCodeErr(t *testing.T) {
 		ContentLength: 0,
 		StatusCode:    299,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	_, err := client.GetObject("mybucket", "")
 	assertEquals(t, "Pass through HTTP StatusCode check.", err.Error(), "invalid response")
@@ -916,9 +1305,13 @@ func TestDoesObjectExistApiStatusCodeErr(t *testing.T) {
 		Body:       NewEmptyBody(),
 		StatusCode: 299,
 	}
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy"))
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, errors.New("dummy")),
+	)
 
-	resp, err := client.DoesObjectExist("mybucket", "")
+	resp, _, err := client.DoesObjectExist("mybucket", "")
 	assertEquals(t, "Pass through HTTP StatusCode check.", err.Error(), "dummy")
 	assertEquals(t, "Pass through HTTP StatusCode check.", resp, false)
 }
@@ -939,7 +1332,11 @@ func TestAbortMultipartUploadApiStatusCodeErr(t *testing.T) {
 	client, mock := newHTTPClientMock(t)
 	mockresp := &http.Response{Body: NewEmptyBody()}
 	mockresp.StatusCode = 200
-	mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil)
+	gomock.InOrder(
+		mock.EXPECT().Do(gomock.Any()).Return(newGetBucketLocationResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(newGetRegionsResp(), nil),
+		mock.EXPECT().Do(gomock.Any()).Return(mockresp, nil),
+	)
 
 	upload := &MultipartUpload{}
 	err := client.AbortMultipartUpload(upload)

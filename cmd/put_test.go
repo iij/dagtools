@@ -183,3 +183,24 @@ func TestPutDirectoryWithoutOption(t *testing.T) {
 		t.Errorf("Error message was not match. \"test_files/\" is a directory (not uploaded) != %v", err.Error())
 	}
 }
+
+func TestPutBucketSelectRegion(t *testing.T) {
+	var (
+		mybucket = "mybucket"
+		region   = "ap2"
+	)
+	config := &ini.Config{Filename: "dummy.ini", Sections: make(map[string]ini.Section)}
+	e := env.Environment{Config: config}
+	e.Init()
+	c := new(putCommand)
+	c.Init(&e)
+	ctrl := gomock.NewController(t)
+	mock := client.NewMockStorageClient(ctrl)
+	mock.EXPECT().SelectRegionPutBucket(mybucket, region).Return(nil)
+	c.cli = mock
+
+	err := c.Run(parseArgs(fmt.Sprintf("-region=%s %s", region, mybucket)))
+	if err != nil {
+		t.Errorf("Error to execute put bucket wit region")
+	}
+}
